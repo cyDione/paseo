@@ -1,9 +1,9 @@
 {
-  "name": "@getpaseo/unistyles-harmony",
-  "version": "0.10.0",
-  "main": "Index.ets",
-  "license": "MIT",
-  "dependencies": {
-    "@rnoh/react-native-openharmony": "0.84.1"
-  }
+  name: "@getpaseo/unistyles-harmony",
+  version: "0.10.0",
+  main: "Index.ets",
+  license: "MIT",
+  dependencies: {
+    "@rnoh/react-native-openharmony": "0.84.1",
+  },
 }

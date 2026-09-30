@@ -43,6 +43,49 @@ microphone, camera or keyboard behavior. To sign for installation, set
 `EXPO_HARMONY_SIGNING_CONFIG_FILE` to an external DevEco signing configuration.
 Keep certificates, passwords and device profiles outside the checkout.
 
+## Automatic upstream synchronization
+
+`Harmony Upstream Sync` checks `getpaseo/paseo:main` hourly, at minute 17, and can
+also run manually. It merges upstream without choosing either side of a conflict.
+Conflicts abort the merge and appear in the run summary and diagnostics artifact;
+resolve them manually before rerunning. A clean merge is checked for types, lint,
+format, panel/audio/clipboard behavior, browser resizing and native terminal HTML.
+
+The workflow updates one PR from the reserved `automation/harmony-upstream`
+branch. Do not use that branch for manual work. Application validation has a
+read-only token; only the final publishing job can push or create a PR. Candidate
+bundles preserve the exact checked commit between jobs, and publication stops if
+the downstream branch changed during validation. Because PRs created with
+`GITHUB_TOKEN` do not trigger ordinary PR workflows, these checks run inside the
+sync workflow itself.
+
+Merge the port and this workflow into the fork's default branch before enabling
+the schedule. Enable Actions for the fork and allow GitHub Actions to create pull
+requests in **Settings → Actions → General → Workflow permissions**. The target
+defaults to `main`; set `HARMONY_DOWNSTREAM_BRANCH` as a repository variable to
+maintain another branch containing the Harmony port and sync script.
+
+Full native validation uses a Linux x64 self-hosted runner with the official CLI
+26.0.0 installed. Register it with label `harmony-26`, or set
+`HARMONY_RUNNER_LABEL`. Set `HARMONY_ENV_FILE` to its DevEco activation script
+(default `/workspace/harmony-tools/env.sh`) and then set
+`HARMONY_NATIVE_CI_ENABLED=true`. That script must configure the complete SDK,
+Node 24.14.1, JDK 21, OHPM and Hvigor for the runner's account. This environment's
+verified installation can be reused; an authenticated Huawei archive download is
+not a reproducible unattended GitHub-hosted setup. The tested native build needs
+enough memory for a roughly 15 GB Hermes compiler peak; use a 32 GB runner.
+
+Without native CI, updates remain draft PRs. Native failures also keep PRs in
+draft. A successful build uploads an unsigned HAP and its checksum to the run's
+`harmony-hap-<commit>` artifact for 14 days; it does not replace a release or the
+checked-in `hap/` package. Signing and device validation remain separate.
+
+Automatic merge is off by default. Enable the repository's auto-merge setting and
+set `HARMONY_AUTO_MERGE=true` only if unattended merges are wanted. It requires
+both JavaScript checks and a full native build to pass and matches the exact PR
+head commit. SDK upgrades, new native APIs and conflicting Harmony adapters still
+need code changes by a maintainer; merging and compilation cannot supply them.
+
 ## Native dependencies
 
 React 19.2.3, RNOH 0.84.1 and Hermes 250829098.0.9 must stay paired. The Expo 55

@@ -1,34 +1,32 @@
 {
-  "app": {
-    "products": [
+  app: {
+    products: [
       {
-        "name": "default",
-        "compatibleSdkVersion": "6.1.0(23)",
-        "targetSdkVersion": "26.0.0",
-        "runtimeOS": "HarmonyOS"
-      }
+        name: "default",
+        compatibleSdkVersion: "6.1.0(23)",
+        targetSdkVersion: "26.0.0",
+        runtimeOS: "HarmonyOS",
+      },
     ],
-    "buildModeSet": [
+    buildModeSet: [
       {
-        "name": "debug"
+        name: "debug",
       },
       {
-        "name": "release"
-      }
-    ]
+        name: "release",
+      },
+    ],
   },
-  "modules": [
+  modules: [
     {
-      "name": "library",
-      "srcPath": "./library",
-      "targets": [
+      name: "library",
+      srcPath: "./library",
+      targets: [
         {
-          "name": "default",
-          "applyToProducts": [
-            "default"
-          ]
-        }
-      ]
-    }
-  ]
+          name: "default",
+          applyToProducts: ["default"],
+        },
+      ],
+    },
+  ],
 }

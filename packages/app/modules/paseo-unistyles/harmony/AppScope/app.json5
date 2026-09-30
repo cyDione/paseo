@@ -1,8 +1,8 @@
 {
-  "app": {
-    "bundleName": "sh.paseo.unistyles",
-    "vendor": "paseo",
-    "versionCode": 1,
-    "versionName": "0.10.0"
-  }
+  app: {
+    bundleName: "sh.paseo.unistyles",
+    vendor: "paseo",
+    versionCode: 1,
+    versionName: "0.10.0",
+  },
 }

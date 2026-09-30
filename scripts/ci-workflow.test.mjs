@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { relative as relativePath } from "node:path";
+import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative as relativePath } from "node:path";
 import test from "node:test";
+import {
+  prepareCandidate,
+  sealCandidate,
+  publishCandidate,
+  publicationPolicy,
+  SyncConflictError,
+} from "./harmony-upstream-sync.mjs";
 
 const repoRoot = new URL("../", import.meta.url);
 const ciWorkflowPath = new URL(".github/workflows/ci.yml", repoRoot);
@@ -302,4 +319,203 @@ test("desktop packaging smokes main pushes and only the pull requests that touch
   for (const action of ["actions/checkout", "actions/setup-node", "actions/upload-artifact"]) {
     assert.match(source, new RegExp(`${action}@[0-9a-f]{40} # v\\d+\\.\\d+\\.\\d+`));
   }
+});
+
+function fixtureGit(cwd, ...args) {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+}
+
+function commitFixture(cwd, filename, contents) {
+  const file = join(cwd, filename);
+  mkdirSync(join(file, ".."), { recursive: true });
+  writeFileSync(file, contents);
+  fixtureGit(cwd, "add", "--", filename);
+  fixtureGit(cwd, "commit", "-m", `Change ${filename}`);
+}
+
+function harmonySyncFixture(t) {
+  const directory = mkdtempSync(join(tmpdir(), "paseo-harmony-sync-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const upstream = join(directory, "upstream");
+  const downstream = join(directory, "downstream");
+  const outputDir = join(directory, "candidate");
+  mkdirSync(upstream);
+  fixtureGit(upstream, "init", "--initial-branch=main");
+  fixtureGit(upstream, "config", "user.name", "Fixture");
+  fixtureGit(upstream, "config", "user.email", "fixture@example.invalid");
+  commitFixture(upstream, "shared.txt", "original\n");
+  commitFixture(
+    upstream,
+    "packages/app/src/terminal/webview/terminal-emulator-webview-html.ts",
+    "original terminal\n",
+  );
+  fixtureGit(directory, "clone", upstream, downstream);
+  fixtureGit(downstream, "config", "user.name", "Fixture");
+  fixtureGit(downstream, "config", "user.email", "fixture@example.invalid");
+  commitFixture(downstream, "harmony.txt", "native port\n");
+  return { directory, upstream, downstream, outputDir };
+}
+
+function mergeFixture(fixture) {
+  return prepareCandidate({
+    cwd: fixture.downstream,
+    upstreamUrl: fixture.upstream,
+    upstreamRef: "main",
+    outputDir: fixture.outputDir,
+  });
+}
+
+test("Harmony sync retains the native port and transports the exact merged code between jobs", (t) => {
+  const fixture = harmonySyncFixture(t);
+  commitFixture(fixture.upstream, "new-feature.txt", "upstream feature\n");
+  const prepared = mergeFixture(fixture);
+  assert.equal(prepared.status, "merged");
+  assert.equal(readFileSync(join(fixture.downstream, "harmony.txt"), "utf8"), "native port\n");
+  const sealed = sealCandidate({ cwd: fixture.downstream, outputDir: fixture.outputDir });
+  const receiver = join(fixture.directory, "receiver");
+  fixtureGit(fixture.directory, "clone", fixture.downstream, receiver);
+  fixtureGit(receiver, "checkout", "--detach", prepared.baseSha);
+  fixtureGit(receiver, "fetch", join(fixture.outputDir, "candidate.bundle"), "HEAD");
+  assert.equal(fixtureGit(receiver, "rev-parse", "FETCH_HEAD"), sealed.candidateSha);
+  fixtureGit(receiver, "checkout", "--detach", "FETCH_HEAD");
+  assert.equal(readFileSync(join(receiver, "new-feature.txt"), "utf8"), "upstream feature\n");
+  assert.equal(readFileSync(join(receiver, "harmony.txt"), "utf8"), "native port\n");
+});
+
+test("Harmony sync does not produce updates when upstream is already included", (t) => {
+  const fixture = harmonySyncFixture(t);
+  const before = fixtureGit(fixture.downstream, "rev-parse", "HEAD");
+  assert.equal(mergeFixture(fixture).status, "unchanged");
+  assert.equal(fixtureGit(fixture.downstream, "rev-parse", "HEAD"), before);
+  assert.equal(existsSync(join(fixture.outputDir, "candidate.bundle")), false);
+});
+
+test("Harmony sync aborts a conflict, retains downstream content and records diagnostics", (t) => {
+  const fixture = harmonySyncFixture(t);
+  commitFixture(fixture.downstream, "shared.txt", "Harmony version\n");
+  commitFixture(fixture.upstream, "shared.txt", "upstream version\n");
+  const before = fixtureGit(fixture.downstream, "rev-parse", "HEAD");
+  assert.throws(
+    () => mergeFixture(fixture),
+    (error) => {
+      assert.ok(error instanceof SyncConflictError);
+      assert.deepEqual(error.files, ["shared.txt"]);
+      return true;
+    },
+  );
+  assert.equal(fixtureGit(fixture.downstream, "rev-parse", "HEAD"), before);
+  assert.equal(fixtureGit(fixture.downstream, "status", "--porcelain"), "");
+  assert.equal(readFileSync(join(fixture.downstream, "shared.txt"), "utf8"), "Harmony version\n");
+  const report = JSON.parse(readFileSync(join(fixture.outputDir, "metadata.json"), "utf8"));
+  assert.deepEqual(
+    { status: report.status, conflicts: report.conflicts },
+    { status: "conflict", conflicts: ["shared.txt"] },
+  );
+  assert.throws(
+    () => sealCandidate({ cwd: fixture.downstream, outputDir: fixture.outputDir }),
+    /clean upstream merge/,
+  );
+});
+
+test("Harmony sync refuses dirty checkouts and preserves the uncommitted file", (t) => {
+  const fixture = harmonySyncFixture(t);
+  writeFileSync(join(fixture.downstream, "user-draft.txt"), "unsaved work\n");
+  assert.throws(() => mergeFixture(fixture), /clean checkout/);
+  assert.equal(readFileSync(join(fixture.downstream, "user-draft.txt"), "utf8"), "unsaved work\n");
+});
+
+test("Harmony sync includes regenerated native terminal HTML in the checked candidate", (t) => {
+  const fixture = harmonySyncFixture(t);
+  commitFixture(fixture.upstream, "new-feature.txt", "upstream feature\n");
+  mergeFixture(fixture);
+  const terminal = "packages/app/src/terminal/webview/terminal-emulator-webview-html.ts";
+  writeFileSync(join(fixture.downstream, terminal), "regenerated native terminal\n");
+  const sealed = sealCandidate({ cwd: fixture.downstream, outputDir: fixture.outputDir });
+  assert.equal(
+    fixtureGit(fixture.downstream, "show", `${sealed.candidateSha}:${terminal}`),
+    "regenerated native terminal",
+  );
+  assert.equal(fixtureGit(fixture.downstream, "status", "--porcelain"), "");
+});
+
+test("Harmony sync refuses to commit unrelated changes from validation", (t) => {
+  const fixture = harmonySyncFixture(t);
+  commitFixture(fixture.upstream, "new-feature.txt", "upstream feature\n");
+  mergeFixture(fixture);
+  writeFileSync(join(fixture.downstream, "shared.txt"), "unexpected mutation\n");
+  assert.throws(
+    () => sealCandidate({ cwd: fixture.downstream, outputDir: fixture.outputDir }),
+    /unexpected tracked files: shared.txt/,
+  );
+  assert.equal(existsSync(join(fixture.outputDir, "candidate.bundle")), false);
+});
+
+test("Harmony publishing stops if the downstream branch moves while validation runs", (t) => {
+  const fixture = harmonySyncFixture(t);
+  const origin = join(fixture.directory, "origin.git");
+  fixtureGit(fixture.directory, "clone", "--bare", fixture.downstream, origin);
+  fixtureGit(fixture.downstream, "remote", "set-url", "origin", origin);
+  commitFixture(fixture.upstream, "new-feature.txt", "upstream feature\n");
+  mergeFixture(fixture);
+  sealCandidate({ cwd: fixture.downstream, outputDir: fixture.outputDir });
+  fixtureGit(fixture.downstream, "push", "origin", "HEAD:main");
+  assert.throws(
+    () =>
+      publishCandidate({
+        cwd: fixture.downstream,
+        outputDir: fixture.outputDir,
+        repository: "fixture/paseo",
+        baseBranch: "main",
+        javascript: "success",
+        native: "success",
+        autoMerge: false,
+        runUrl: "https://example.invalid/run",
+      }),
+    /changed during validation/,
+  );
+});
+
+test("Harmony updates stay draft and never auto-merge without both successful checks", () => {
+  for (const native of ["skipped", "failure", "cancelled"]) {
+    assert.deepEqual(publicationPolicy({ javascript: "success", native, autoMerge: true }), {
+      draft: true,
+      autoMerge: false,
+    });
+  }
+  assert.deepEqual(
+    publicationPolicy({ javascript: "failure", native: "success", autoMerge: true }),
+    { draft: true, autoMerge: false },
+  );
+  assert.deepEqual(
+    publicationPolicy({ javascript: "success", native: "success", autoMerge: false }),
+    { draft: false, autoMerge: false },
+  );
+  assert.deepEqual(
+    publicationPolicy({ javascript: "success", native: "success", autoMerge: true }),
+    { draft: false, autoMerge: true },
+  );
+});
+
+test("Harmony sync validates with read-only credentials and publishes from the trusted base", () => {
+  const source = readFileSync(
+    new URL(".github/workflows/harmony-upstream-sync.yml", repoRoot),
+    "utf8",
+  );
+  const jobs = jobBlocks(source);
+  const prepare = jobs.get("prepare").join("\n");
+  const native = jobs.get("native").join("\n");
+  const publish = jobs.get("publish").join("\n");
+  assert.match(source.split("jobs:", 1)[0], /permissions:\s*\n\s+contents: read/);
+  assert.doesNotMatch(prepare, /contents: write|GH_TOKEN:/);
+  assert.doesNotMatch(native, /contents: write|GH_TOKEN:/);
+  assert.match(native, /HARMONY_NATIVE_CI_ENABLED == 'true'/);
+  assert.match(native, /npm run harmony:build/);
+  assert.match(publish, /contents: write\s*\n\s+pull-requests: write/);
+  assert.match(publish, /ref: \$\{\{ needs\.prepare\.outputs\.base_sha \}\}/);
+  assert.doesNotMatch(publish, /npm ci|npm run/);
+  assert.match(publish, /HARMONY_AUTO_MERGE:.*\|\| 'false'/);
 });

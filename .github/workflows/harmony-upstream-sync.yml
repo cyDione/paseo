@@ -1,0 +1,184 @@
+name: Harmony Upstream Sync
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harmony-upstream-sync
+  cancel-in-progress: false
+
+env:
+  HARMONY_BASE_BRANCH: ${{ vars.HARMONY_DOWNSTREAM_BRANCH || 'main' }}
+  ONNXRUNTIME_NODE_INSTALL: skip
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+  SKIP_SKIA_DOWNLOAD: "1"
+  LEFTHOOK: "0"
+  NODE_USE_ENV_PROXY: "1"
+
+jobs:
+  prepare:
+    name: Merge upstream and validate JavaScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      changed: ${{ steps.merge.outputs.changed }}
+      base_sha: ${{ steps.merge.outputs.base_sha }}
+      upstream_sha: ${{ steps.merge.outputs.upstream_sha }}
+      candidate_sha: ${{ steps.seal.outputs.candidate_sha }}
+    steps:
+      - name: Set output directory
+        run: echo "HARMONY_SYNC_DIR=$RUNNER_TEMP/harmony-sync" >> "$GITHUB_ENV"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.HARMONY_BASE_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.14.1"
+          cache: npm
+      - name: Merge upstream without discarding downstream changes
+        id: merge
+        run: node scripts/harmony-upstream-sync.mjs prepare
+      - name: Install locked dependencies
+        if: steps.merge.outputs.changed == 'true'
+        run: npm ci --no-audit --no-fund
+      - name: Build workspace dependencies and native terminal HTML
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          npm run build:server
+          npm run build:app-deps
+          npm run build:terminal-webview --workspace=@getpaseo/app
+          npm run format:files -- packages/app/src/terminal/webview/terminal-emulator-webview-html.ts
+      - name: Check types, lint and format
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run format:check
+      - name: Test sync, panels, audio and clipboard
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          node --test scripts/ci-workflow.test.mjs
+          npm run test --workspace=@getpaseo/app -- src/mobile-panels/model.test.ts src/voice/voice-runtime.test.ts src/composer/clipboard-image.test.ts --maxWorkers=2
+      - name: Install browser for focused window and terminal checks
+        if: steps.merge.outputs.changed == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Test browser resizing and generated native terminal
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          E2E_WORKERS: "1"
+        run: |
+          npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/composer-focus.spec.ts
+          npm run test:browser --workspace=@getpaseo/app -- src/terminal/webview/terminal-find.browser.test.ts
+      - name: Seal the candidate, including regenerated native HTML
+        id: seal
+        if: ${{ !cancelled() && steps.merge.outputs.changed == 'true' }}
+        run: node scripts/harmony-upstream-sync.mjs seal
+      - name: Retain candidate and diagnostics even when validation fails
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: harmony-sync-candidate
+          path: ${{ env.HARMONY_SYNC_DIR }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  native:
+    name: Build unsigned Harmony Release HAP
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.candidate_sha != '' && needs.prepare.result == 'success' && vars.HARMONY_NATIVE_CI_ENABLED == 'true' }}
+    runs-on: [self-hosted, linux, x64, "${{ vars.HARMONY_RUNNER_LABEL || 'harmony-26' }}"]
+    timeout-minutes: 90
+    env:
+      HARMONY_ENV_FILE: ${{ vars.HARMONY_ENV_FILE || '/workspace/harmony-tools/env.sh' }}
+      HARMONY_CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+    steps:
+      - name: Set output directory
+        run: echo "HARMONY_SYNC_DIR=$RUNNER_TEMP/harmony-sync" >> "$GITHUB_ENV"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: harmony-sync-candidate
+          path: ${{ env.HARMONY_SYNC_DIR }}
+      - name: Check out the exact validated candidate
+        run: |
+          git fetch "$HARMONY_SYNC_DIR/candidate.bundle" HEAD
+          test "$(git rev-parse FETCH_HEAD)" = "$HARMONY_CANDIDATE_SHA"
+          git checkout --detach FETCH_HEAD
+      - name: Activate installed DevEco CLI 26.0.0
+        shell: bash
+        run: |
+          test -f "$HARMONY_ENV_FILE"
+          source "$HARMONY_ENV_FILE"
+          for name in JAVA_HOME COMMANDLINE_TOOL_DIR NODE_HOME DEVECO_NODE_HOME DEVECO_SDK_HOME HDC_HOME HVIGOR_USER_HOME; do
+            test -n "${!name}"
+            printf '%s=%s\n' "$name" "${!name}" >> "$GITHUB_ENV"
+          done
+          printf '%s\n' "$COMMANDLINE_TOOL_DIR/command-line-tools/bin" "$NODE_HOME/bin" "$HDC_HOME" "$JAVA_HOME/bin" >> "$GITHUB_PATH"
+          test "$(node --version)" = v24.14.1
+          java -version
+      - name: Install and build the native target
+        run: |
+          npm ci --no-audit --no-fund
+          npm run harmony:build
+          npm run harmony:doctor
+          npm run harmony:modules --workspace=@getpaseo/app
+      - name: Verify HAP and embedded bytecode
+        shell: bash
+        run: |
+          hap=packages/app/harmony/entry/build/default/outputs/default/entry-default-unsigned.hap
+          unzip -t "$hap" > "$HARMONY_SYNC_DIR/hap-integrity.log"
+          unzip -p "$hap" resources/rawfile/hermes_bundle.hbc > "$HARMONY_SYNC_DIR/packaged.hermes.hbc"
+          cmp "$HARMONY_SYNC_DIR/packaged.hermes.hbc" packages/app/harmony/entry/src/main/resources/rawfile/hermes_bundle.hbc
+          mkdir -p "$RUNNER_TEMP/harmony-hap"
+          cp "$hap" "$RUNNER_TEMP/harmony-hap/paseo-harmony-unsigned.hap"
+          cp "$HARMONY_SYNC_DIR/metadata.json" "$RUNNER_TEMP/harmony-hap/source.json"
+          cd "$RUNNER_TEMP/harmony-hap"
+          sha256sum paseo-harmony-unsigned.hap > paseo-harmony-unsigned.hap.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: harmony-hap-${{ needs.prepare.outputs.candidate_sha }}
+          path: ${{ runner.temp }}/harmony-hap/
+          compression-level: 0
+          retention-days: 14
+
+  publish:
+    name: Create or update the downstream PR
+    needs: [prepare, native]
+    if: ${{ !cancelled() && needs.prepare.outputs.candidate_sha != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Set output directory
+        run: echo "HARMONY_SYNC_DIR=$RUNNER_TEMP/harmony-sync" >> "$GITHUB_ENV"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.14.1"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: harmony-sync-candidate
+          path: ${{ env.HARMONY_SYNC_DIR }}
+      - name: Publish reviewed candidate with validation status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HARMONY_JS_RESULT: ${{ needs.prepare.result }}
+          HARMONY_NATIVE_RESULT: ${{ needs.native.result }}
+          HARMONY_AUTO_MERGE: ${{ vars.HARMONY_AUTO_MERGE || 'false' }}
+        run: node scripts/harmony-upstream-sync.mjs publish
