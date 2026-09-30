@@ -74,6 +74,7 @@
     "format:check": "oxfmt --check .",
     "format:check:files": "oxfmt --check",
     "lint": "oxlint",
+    "lint:lockfile": "npx --yes lockfile-lint@5.0.1 --path package-lock.json --type npm --allowed-hosts npm --allowed-urls https://raw.atomgit.com/baoshuo/rntpc_react-native-screens/blobs/4d7ff55b0d27067d85388e6fbe2074c7df7e49df/react-native-ohos-react-native-screens-4.26.2-rnoh084.0.tgz --validate-https --validate-integrity",
     "lint:fix": "oxlint --fix",
     "knip": "knip",
     "acp:version-drift": "node scripts/check-acp-catalog-version-drift.mjs",

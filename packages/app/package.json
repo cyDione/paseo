@@ -115,6 +115,7 @@
     "@react-native-ohos/react-native-svg": "15.13.0",
     "@react-native-ohos/react-native-webview": "13.16.4",
     "@react-native-ohos/react-native-worklets": "1.0.0",
+    "@react-native/assets-registry": "0.84.1",
     "@react-native/normalize-colors": "0.84.1",
     "@react-navigation/native": "7.1.33",
     "@react-navigation/native-stack": "7.14.5",
