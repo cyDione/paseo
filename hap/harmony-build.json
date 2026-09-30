@@ -1,0 +1,78 @@
+{
+  "created_utc": "2026-09-30T11:23:05.049321+00:00",
+  "artifact": "paseo-harmony-unsigned.hap",
+  "bytes": 84069626,
+  "sha256": "a6877246f0b239175ebeaca74963c535ce0f74ef7b054ae74020fa66d80a9d8f",
+  "bundle_name": "sh.paseo.harmony",
+  "version": "0.10.0",
+  "build_mode": "release",
+  "signed": false,
+  "deveco_cli": "26.0.0.851",
+  "sdk": "26.0.0.105",
+  "minimum_os": "HarmonyOS 6.1 / API 23",
+  "target_api": 26,
+  "hermes_bytecode_sha256": "1c1d3c235835eafc6a022e3451683cbb96c698e036b63c52ed1ec17da7f43974",
+  "hermes_matches_latest_export": true,
+  "zip_crc_valid": true,
+  "native_modules_verified": 43,
+  "arm64_libraries": [
+    "libs/arm64-v8a/libc++_shared.so",
+    "libs/arm64-v8a/libexpo_eas_client.so",
+    "libs/arm64-v8a/libexpo_file_system_atomic.so",
+    "libs/arm64-v8a/libexpo_harmony__expo.so",
+    "libs/arm64-v8a/libexpo_harmony__expo_dev_launcher.so",
+    "libs/arm64-v8a/libexpo_harmony__expo_modules_core.so",
+    "libs/arm64-v8a/libexpo_localization.so",
+    "libs/arm64-v8a/libexpo_sqlite.so",
+    "libs/arm64-v8a/libffrt_cpp.so",
+    "libs/arm64-v8a/libhermestooling.so",
+    "libs/arm64-v8a/libhermesvm.so",
+    "libs/arm64-v8a/libjsi.so",
+    "libs/arm64-v8a/libjsoncpp.so",
+    "libs/arm64-v8a/libpaseo_unistyles.so",
+    "libs/arm64-v8a/libreactnative.so",
+    "libs/arm64-v8a/librnoh_app.so",
+    "libs/arm64-v8a/librnoh_async_storage.so",
+    "libs/arm64-v8a/librnoh_core.so",
+    "libs/arm64-v8a/librnoh_core_package.so",
+    "libs/arm64-v8a/librnoh_gesture_handler.so",
+    "libs/arm64-v8a/librnoh_keyboard_controller.so",
+    "libs/arm64-v8a/librnoh_masked_view.so",
+    "libs/arm64-v8a/librnoh_nitro_modules.so",
+    "libs/arm64-v8a/librnoh_reanimated.so",
+    "libs/arm64-v8a/librnoh_safe_area.so",
+    "libs/arm64-v8a/librnoh_screens.so",
+    "libs/arm64-v8a/librnoh_skia.so",
+    "libs/arm64-v8a/librnoh_svg.so",
+    "libs/arm64-v8a/librnoh_webview.so",
+    "libs/arm64-v8a/librnoh_worklets.so"
+  ],
+  "validation": {
+    "native_release_build": "passed",
+    "workspace_typecheck": "passed",
+    "lint": "passed",
+    "unit_tests": {
+      "passed": 37,
+      "files": 3
+    },
+    "composer_browser_e2e": {
+      "passed": 2
+    },
+    "generated_terminal_browser": {
+      "passed": 1
+    },
+    "daemon_health": "passed",
+    "daemon_terminal_rpc": "passed",
+    "node_pty_smoke": "passed"
+  },
+  "not_verified": [
+    "Signing and installation",
+    "Native keyboard, focus and selection across folding",
+    "Microphone, camera and other device APIs",
+    "Pura X Max device behavior"
+  ],
+  "background_push": "Deferred: requires Huawei Push Kit application/signing configuration and daemon transport adapter",
+  "source_commit": "2ed1cb0e501c96031aaf24a64e995287479cb9cd",
+  "source_branch": "feat/harmonyos-pura-x-max",
+  "release_tag": "harmony-0.10.0-preview.1"
+}

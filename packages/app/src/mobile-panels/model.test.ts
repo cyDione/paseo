@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MobilePanelView } from "@/stores/panel-store";
+import { isCompactWindowWidth } from "@/constants/breakpoints";
 import {
   canBeginMobilePanelGesture,
   createMobilePanelMotionState,
@@ -276,5 +277,22 @@ describe("mobile panel ownership", () => {
       rightBackdropOpacity: 0.25,
       rightTranslateX: 600,
     });
+  });
+
+  it("projects an active drag across fold and split-window sizes without changing ownership", () => {
+    const panels = new MobilePanelsScenario("file-explorer");
+    panels.beginGesture("file-explorer");
+    const selection = panels.snapshot();
+    for (const width of [420, 719, 720, 960, 520]) {
+      const frame = getMobilePanelFrame(0.25, width);
+      expect(frame.rightTranslateX).toBe(width * 0.75);
+      expect(frame.rightBackdropOpacity).toBe(0.25);
+      expect(panels.snapshot()).toEqual(selection);
+    }
+    panels.cancelGesture();
+    expect(panels.snapshot().target).toBe("file-explorer");
+    expect(panels.commits).toEqual([]);
+    expect(isCompactWindowWidth(719)).toBe(true);
+    expect(isCompactWindowWidth(720)).toBe(false);
   });
 });

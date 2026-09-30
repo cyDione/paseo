@@ -145,6 +145,9 @@ function renderPage(client: PluginClient | null): void {
 
 describe("HostPluginsPage", () => {
   beforeEach(() => {
+    // Menu actions are tested as desktop popovers; JSDOM has no layout measurements.
+    vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1280);
+    window.dispatchEvent(new Event("resize"));
     vi.stubGlobal("React", React);
     runtime.connected = true;
     runtime.supported = true;
@@ -158,6 +161,7 @@ describe("HostPluginsPage", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 

@@ -1,4 +1,6 @@
-import { useUnistyles } from "react-native-unistyles";
+import { useSyncExternalStore } from "react";
+import { Dimensions } from "react-native";
+import { isCompactWindowWidth } from "./breakpoints";
 import { isWeb } from "@/constants/platform";
 
 export const FOOTER_HEIGHT = 75;
@@ -34,12 +36,24 @@ export {
 } from "./platform";
 
 /**
- * Reactive hook — re-renders the component when the breakpoint changes.
- * Always use this instead of reading UnistylesRuntime.breakpoint directly.
+ * Subscribe to the current window, including fold, rotation and split-screen changes.
+ * React only publishes a layout change when the compact boundary is crossed.
  */
 export function useIsCompactFormFactor(): boolean {
-  const { rt } = useUnistyles();
-  return rt.breakpoint === "xs" || rt.breakpoint === "sm";
+  return useSyncExternalStore(subscribeWindowSize, readCompactWindow, readServerCompactWindow);
+}
+
+function subscribeWindowSize(onChange: () => void): () => void {
+  const subscription = Dimensions.addEventListener("change", onChange);
+  return () => subscription.remove();
+}
+
+function readCompactWindow(): boolean {
+  return isCompactWindowWidth(Dimensions.get("window").width);
+}
+
+function readServerCompactWindow(): boolean {
+  return true;
 }
 
 // SplitContainer relies on dnd-kit and DOM-backed accessibility helpers.

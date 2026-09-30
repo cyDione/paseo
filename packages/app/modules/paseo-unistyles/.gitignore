@@ -1,0 +1,9 @@
+harmony/.hvigor/
+harmony/oh_modules/
+harmony/oh-package-lock.json5
+harmony/library/oh_modules/
+harmony/library/oh-package-lock.json5
+harmony/library/build/
+harmony/library/BuildProfile.ets
+harmony/library/src/main/cpp/generated/
+harmony/library.har

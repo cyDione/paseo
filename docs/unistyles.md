@@ -54,6 +54,10 @@ There is no escape hatch. If none of (1)–(3) fit, the problem is upstream — 
 
 ## How Updates Propagate
 
+The Harmony platform bridge preserves the native version 3 ShadowRegistry and
+publishes current-window metrics before stylesheet configuration. Its build and
+version constraints are documented in [harmony.md](harmony.md#native-dependencies).
+
 For standard React Native components, the [Unistyles Babel plugin](https://www.unistyl.es/v3/other/babel-plugin) rewrites imports such as `View`, `Text`, `Pressable`, and `ScrollView` to Unistyles-aware component factories. On native, those factories borrow the component ref and register the `style` prop with the ShadowRegistry. The upstream ["Why my view doesn't update?"](https://www.unistyl.es/v3/guides/why-my-view-doesnt-update) guide describes this as the ShadowTree update path that avoids unnecessary React re-renders.
 
 The important detail: the automatic native path tracks `props.style`. It does not generally track every prop that happens to carry style-like values.

@@ -43,7 +43,8 @@ const { theme, snapshotState, configState, patchConfigMock, openProviderSettings
   }),
 );
 
-vi.mock("react-native", () => ({
+vi.mock("react-native", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-native")>()),
   Platform: { OS: "web" },
   View: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("div", { "data-testid": testID }, children),
@@ -336,6 +337,8 @@ describe("ProvidersSection", () => {
   let container: HTMLElement | null = null;
 
   beforeEach(() => {
+    vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1280);
+    window.dispatchEvent(new Event("resize"));
     vi.stubGlobal("React", React);
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -353,6 +356,7 @@ describe("ProvidersSection", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     if (root) {
       act(() => {
         root?.unmount();

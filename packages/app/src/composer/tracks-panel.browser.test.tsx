@@ -2,12 +2,18 @@ import React, { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Pressable, Text } from "react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { page } from "@vitest/browser/context";
 import { ComposerTrackPill, ComposerTrackRow, type ComposerTrackPillSegment } from "./tracks";
 
 const SUBAGENT_SEGMENTS: ComposerTrackPillSegment[] = [{ bucket: null, text: "3 subagents" }];
 
-// App sources compile against the classic JSX runtime, which expects React on the global.
-beforeEach(() => vi.stubGlobal("React", React));
+beforeEach(async () => {
+  // App sources compile against the classic JSX runtime, which expects React on the global.
+  vi.stubGlobal("React", React);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  // These cases exercise the desktop popover; compact windows use a native sheet.
+  await page.viewport(1280, 800);
+});
 
 /**
  * The real menu engine, in a real browser, because both things under test only exist there: the

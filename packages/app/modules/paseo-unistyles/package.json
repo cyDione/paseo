@@ -1,0 +1,16 @@
+{
+  "name": "@getpaseo/unistyles-harmony",
+  "version": "0.10.0",
+  "private": true,
+  "main": "src/index.ts",
+  "harmony": {
+    "autolinking": {
+      "mainHarPath": "harmony",
+      "ohPackageName": "@getpaseo/unistyles-harmony",
+      "etsPackageClassName": "PaseoUnistylesPackage",
+      "etsPackageImport": "named",
+      "cppPackageClassName": "PaseoUnistylesPackage",
+      "cmakeLibraryTargetName": "paseo_unistyles"
+    }
+  }
+}

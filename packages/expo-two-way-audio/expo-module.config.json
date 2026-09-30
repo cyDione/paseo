@@ -1,9 +1,12 @@
 {
-  "platforms": ["ios", "android"],
+  "platforms": ["ios", "android", "harmony"],
   "ios": {
     "modules": ["ExpoTwoWayAudioModule"]
   },
   "android": {
     "modules": ["expo.modules.twowayaudio.ExpoTwoWayAudioModule"]
+  },
+  "harmony": {
+    "modules": ["ExpoTwoWayAudioModule"]
   }
 }

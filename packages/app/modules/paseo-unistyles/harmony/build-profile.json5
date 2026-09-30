@@ -1,0 +1,32 @@
+{
+  app: {
+    products: [
+      {
+        name: "default",
+        compatibleSdkVersion: "6.1.0(23)",
+        targetSdkVersion: "26.0.0",
+        runtimeOS: "HarmonyOS",
+      },
+    ],
+    buildModeSet: [
+      {
+        name: "debug",
+      },
+      {
+        name: "release",
+      },
+    ],
+  },
+  modules: [
+    {
+      name: "library",
+      srcPath: "./library",
+      targets: [
+        {
+          name: "default",
+          applyToProducts: ["default"],
+        },
+      ],
+    },
+  ],
+}

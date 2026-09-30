@@ -1,0 +1,26 @@
+diff --git a/node_modules/expo-modules-autolinking/build/platforms/index.js b/node_modules/expo-modules-autolinking/build/platforms/index.js
+index 9f6ed61..9b61abc 100644
+--- a/node_modules/expo-modules-autolinking/build/platforms/index.js
++++ b/node_modules/expo-modules-autolinking/build/platforms/index.js
+@@ -33,6 +33,8 @@ function getSupportPackageForPlatform(platform) {
+             return 'react-native-macos';
+         case 'windows':
+             return 'react-native-windows';
++        case 'harmony':
++            return '@react-native-oh/react-native-harmony';
+         case 'apple':
+         case 'web':
+         case 'devtools':
+diff --git a/node_modules/expo-modules-autolinking/src/platforms/index.ts b/node_modules/expo-modules-autolinking/src/platforms/index.ts
+index 5adb6de..055066b 100644
+--- a/node_modules/expo-modules-autolinking/src/platforms/index.ts
++++ b/node_modules/expo-modules-autolinking/src/platforms/index.ts
+@@ -63,6 +63,8 @@ export function getSupportPackageForPlatform(platform: SupportedPlatform): strin
+       return 'react-native-macos';
+     case 'windows':
+       return 'react-native-windows';
++    case 'harmony':
++      return '@react-native-oh/react-native-harmony';
+     case 'apple':
+     case 'web':
+     case 'devtools':

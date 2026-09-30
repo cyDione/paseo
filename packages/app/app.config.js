@@ -10,6 +10,7 @@ const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
 const isProfileBuild = process.env.PASEO_PROFILE_BUILD === "1";
+const isHarmonyBuild = process.env.EXPO_METRO_TARGET === "harmony";
 
 const buildProfile = isFdroidBuild
   ? {
@@ -100,7 +101,8 @@ export default {
     name: variant.name,
     slug: "voice-mobile",
     version: nativeReleaseVersion.appVersion,
-    orientation: "portrait",
+    orientation: isHarmonyBuild ? "default" : "portrait",
+    platforms: ["ios", "android", "web", "harmony"],
     icon: "./assets/images/icon.png",
     scheme: "paseo",
     userInterfaceStyle: "automatic",
@@ -135,6 +137,26 @@ export default {
     web: {
       output: "single",
       favicon: "./assets/images/favicon.png",
+    },
+    harmony: {
+      bundleName: `${variant.packageId}.harmony`,
+      compatibleSdkVersion: 23,
+      targetSdkVersion: 26,
+      label: variant.name,
+      icon: "./assets/images/icon.png",
+      versionCode: nativeReleaseVersion.androidVersionCode,
+      deviceTypes: ["phone", "tablet"],
+      orientation: "auto_rotation",
+      permissions: [
+        {
+          name: "ohos.permission.CAMERA",
+          reason: "$string:camera_permission_reason",
+          usedScene: { abilities: ["EntryAbility"], when: "inuse" },
+        },
+      ],
+      ...(process.env.EXPO_HARMONY_SIGNING_CONFIG_FILE
+        ? { signingConfigFile: process.env.EXPO_HARMONY_SIGNING_CONFIG_FILE }
+        : {}),
     },
     autolinking: {
       searchPaths: ["../../node_modules", "./node_modules"],
@@ -179,11 +201,33 @@ export default {
       ],
       ...buildProfile.fdroidPlugins,
       ...(isProfileBuild ? [withAndroidProfileable] : []),
+      "@expo-harmony/expo-constants",
+      "@expo-harmony/expo-notifications",
+      [
+        "@expo-harmony/expo-audio",
+        {
+          microphonePermission: "允许 Paseo 使用麦克风进行语音输入。",
+        },
+      ],
+      "@expo-harmony/expo-sharing",
+      "@expo-harmony/expo-system-ui",
+      [
+        "@expo-harmony/expo-build-properties",
+        {
+          harmony: {
+            compatibleSdkVersion: 23,
+            targetSdkVersion: 26,
+            abiFilters: ["arm64-v8a"],
+          },
+        },
+      ],
+      "@expo-harmony/prebuild-config",
     ],
     experiments: {
       typedRoutes: true,
       reactCompiler: true,
       autolinkingModuleResolution: true,
+      outOfTreePlatforms: true,
     },
     extra: {
       fdroidBuild: isFdroidBuild,

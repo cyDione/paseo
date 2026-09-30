@@ -3,6 +3,47 @@ import type { DaemonServerInfo } from "@/stores/session-store";
 import type { AudioEngine } from "@/voice/audio-engine-types";
 import { createVoiceRuntime, type VoiceSessionAdapter } from "@/voice/voice-runtime";
 import { REALTIME_VOICE_VAD_CONFIG } from "@/voice/realtime-voice-config";
+import {
+  PcmQueue,
+  pcmVolume,
+} from "../../../expo-two-way-audio/harmony/library/src/main/ets/PcmQueue";
+
+describe("Harmony PCM playback buffers", () => {
+  it("owns input buffers and drains chunks across callback boundaries with a silent underrun", () => {
+    const queue = new PcmQueue(8);
+    const source = new Uint8Array([1, 2, 3, 4]);
+    queue.push(source);
+    source.fill(9);
+    queue.push(new Uint8Array([5, 6]));
+    const first = new Uint8Array(2);
+    expect(queue.fill(first)).toBe(2);
+    expect(Array.from(first)).toEqual([1, 2]);
+    const second = new Uint8Array(6).fill(9);
+    expect(queue.fill(second)).toBe(4);
+    expect(Array.from(second)).toEqual([3, 4, 5, 6, 0, 0]);
+    expect(queue.byteLength).toBe(0);
+  });
+
+  it("rejects malformed/overflow chunks without corrupting pending audio and clears partial chunks", () => {
+    const queue = new PcmQueue(4);
+    queue.push(new Uint8Array([1, 2, 3, 4]));
+    expect(() => queue.push(new Uint8Array([5]))).toThrow("complete signed 16-bit samples");
+    expect(() => queue.push(new Uint8Array([5, 6]))).toThrow("queue is full");
+    expect(queue.byteLength).toBe(4);
+    queue.fill(new Uint8Array(2));
+    queue.clear();
+    queue.push(new Uint8Array([7, 8]));
+    const output = new Uint8Array(4);
+    expect(queue.fill(output)).toBe(2);
+    expect(Array.from(output)).toEqual([7, 8, 0, 0]);
+  });
+
+  it("measures signed little-endian PCM from a buffer slice", () => {
+    const bytes = new Uint8Array([0, 0, 0, 128, 0, 64, 0, 0]);
+    expect(pcmVolume(bytes.subarray(2, 6))).toBeCloseTo(Math.sqrt(0.625));
+    expect(pcmVolume(new Uint8Array(0))).toBe(0);
+  });
+});
 
 const CUE_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
 const THINKING_TONE_MIN_SILENCE_MS = 1500;

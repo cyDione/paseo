@@ -8,6 +8,17 @@ import { join, relative } from "node:path";
 // workspace root live in their workspace's own node_modules, and patch-package resolves
 // the patch's node_modules/... paths relative to its working directory.
 const patchedPackages = [
+  // MaskedView is a C++-only C-API package; upstream assumes an ArkTS export.
+  {
+    nodeModulesPath: "node_modules/@expo-harmony/expo-modules-autolinking",
+    patchPrefix: "@expo-harmony+expo-modules-autolinking+",
+  },
+  // Expo CLI 55 queries the RN host even for configured out-of-tree platforms.
+  // Keep this pinned until Expo's autolinker registers the Harmony host.
+  {
+    nodeModulesPath: "node_modules/expo-modules-autolinking",
+    patchPrefix: "expo-modules-autolinking+",
+  },
   {
     nodeModulesPath: "node_modules/react-native-markdown-display",
     patchPrefix: "react-native-markdown-display+",
@@ -26,6 +37,11 @@ const patchedPackages = [
     nodeModulesPath: "node_modules/react-native-gesture-handler",
     patchPrefix: "react-native-gesture-handler+",
   },
+  // RN Web 0.21 removed findNodeHandle; keyboard worklet handlers are native-only.
+  {
+    nodeModulesPath: "node_modules/react-native-keyboard-controller",
+    patchPrefix: "react-native-keyboard-controller+",
+  },
   {
     nodeModulesPath: "node_modules/react-native-svg",
     patchPrefix: "react-native-svg+",
@@ -41,9 +57,14 @@ const patchedPackages = [
   },
 ];
 
-const installedPackages = patchedPackages.filter(({ nodeModulesPath }) =>
-  existsSync(nodeModulesPath),
-);
+const installedPackages = patchedPackages.flatMap((entry) => {
+  if (existsSync(entry.nodeModulesPath)) return [entry];
+  const appPath = join("packages/app", entry.nodeModulesPath);
+  if (!entry.cwd && existsSync(appPath)) {
+    return [{ ...entry, nodeModulesPath: appPath, cwd: "packages/app" }];
+  }
+  return [];
+});
 
 if (!existsSync("patches") || installedPackages.length === 0) {
   process.exit(0);
