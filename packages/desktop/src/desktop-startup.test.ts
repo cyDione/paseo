@@ -1,7 +1,52 @@
 import { describe, expect, it, vi } from "vitest";
 import { runDesktopStartup } from "./desktop-startup";
+import { EventEmitter } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { loadReactDevTools } from "./features/react-devtools";
+
+const devTools = vi.hoisted(() => ({
+  userData: "",
+  request: vi.fn(),
+  loadExtension: vi.fn(),
+}));
+
+vi.mock("electron", () => ({
+  app: { getPath: () => devTools.userData },
+  net: { request: devTools.request },
+  session: { defaultSession: { extensions: { loadExtension: devTools.loadExtension } } },
+}));
 
 describe("desktop startup", () => {
+  it("continues GUI startup when the optional React DevTools download fails", async () => {
+    devTools.userData = await mkdtemp(path.join(tmpdir(), "paseo-devtools-startup-"));
+    const failure = new Error("Development extension download failed");
+    const request = new EventEmitter();
+    devTools.request.mockReturnValue(
+      Object.assign(request, { end: () => request.emit("error", failure) }),
+    );
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mountWindow = vi.fn();
+    try {
+      await runDesktopStartup({
+        hasPendingGuiLaunchRequest: true,
+        runCliPassthroughIfRequested: vi.fn(),
+        inheritLoginShellEnv: vi.fn(),
+        bootstrapGui: async () => {
+          await loadReactDevTools();
+          mountWindow();
+        },
+      });
+      expect(mountWindow).toHaveBeenCalledTimes(1);
+      expect(warning).toHaveBeenCalledWith("[DevTools] Failed to load React DevTools:", failure);
+      expect(devTools.loadExtension).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+      await rm(devTools.userData, { recursive: true, force: true });
+    }
+  });
+
   it("runs CLI passthrough before GUI login-shell env inheritance", async () => {
     const calls: string[] = [];
     await runDesktopStartup({

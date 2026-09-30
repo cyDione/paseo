@@ -1,0 +1,58 @@
+diff --git a/node_modules/react-native-keyboard-controller/lib/commonjs/internal.js b/node_modules/react-native-keyboard-controller/lib/commonjs/internal.js
+index f452fdd..fe1ff07 100644
+--- a/node_modules/react-native-keyboard-controller/lib/commonjs/internal.js
++++ b/node_modules/react-native-keyboard-controller/lib/commonjs/internal.js
+@@ -12,8 +12,8 @@ function useEventHandlerRegistration(map, viewTagRef) {
+   const onRegisterHandler = handler => {
+     const ids = [];
+     const attachWorkletHandlers = () => {
+-      const viewTag = (0, _reactNative.findNodeHandle)(viewTagRef.current);
+-      if (__DEV__ && !viewTag) {
++      const viewTag = _reactNative.Platform.OS === "web" ? null : (0, _reactNative.findNodeHandle)(viewTagRef.current);
++      if (__DEV__ && _reactNative.Platform.OS !== "web" && !viewTag) {
+         console.warn("Can not attach worklet handlers for `react-native-keyboard-controller` because view tag can not be resolved. Be sure that `KeyboardProvider` is fully mounted before registering handlers. If you think it is a bug in library, please open an issue.");
+       }
+       ids.push(...Object.keys(handler).map(handlerName => {
+diff --git a/node_modules/react-native-keyboard-controller/lib/module/internal.js b/node_modules/react-native-keyboard-controller/lib/module/internal.js
+index efce53d..eb84593 100644
+--- a/node_modules/react-native-keyboard-controller/lib/module/internal.js
++++ b/node_modules/react-native-keyboard-controller/lib/module/internal.js
+@@ -1,12 +1,12 @@
+ import { useRef } from "react";
+-import { Animated, findNodeHandle } from "react-native";
++import { Animated, findNodeHandle, Platform } from "react-native";
+ import { registerEventHandler, unregisterEventHandler } from "./event-handler";
+ export function useEventHandlerRegistration(map, viewTagRef) {
+   const onRegisterHandler = handler => {
+     const ids = [];
+     const attachWorkletHandlers = () => {
+-      const viewTag = findNodeHandle(viewTagRef.current);
+-      if (__DEV__ && !viewTag) {
++      const viewTag = Platform.OS === "web" ? null : findNodeHandle(viewTagRef.current);
++      if (__DEV__ && Platform.OS !== "web" && !viewTag) {
+         console.warn("Can not attach worklet handlers for `react-native-keyboard-controller` because view tag can not be resolved. Be sure that `KeyboardProvider` is fully mounted before registering handlers. If you think it is a bug in library, please open an issue.");
+       }
+       ids.push(...Object.keys(handler).map(handlerName => {
+diff --git a/node_modules/react-native-keyboard-controller/src/internal.ts b/node_modules/react-native-keyboard-controller/src/internal.ts
+index 85e507a..660d577 100644
+--- a/node_modules/react-native-keyboard-controller/src/internal.ts
++++ b/node_modules/react-native-keyboard-controller/src/internal.ts
+@@ -1,5 +1,5 @@
+ import { useRef } from "react";
+-import { Animated, findNodeHandle } from "react-native";
++import { Animated, findNodeHandle, Platform } from "react-native";
+ 
+ import { registerEventHandler, unregisterEventHandler } from "./event-handler";
+ 
+@@ -15,9 +15,9 @@ export function useEventHandlerRegistration<
+   const onRegisterHandler = (handler: H) => {
+     const ids: (number | null)[] = [];
+     const attachWorkletHandlers = () => {
+-      const viewTag = findNodeHandle(viewTagRef.current);
++      const viewTag = Platform.OS === "web" ? null : findNodeHandle(viewTagRef.current);
+ 
+-      if (__DEV__ && !viewTag) {
++      if (__DEV__ && Platform.OS !== "web" && !viewTag) {
+         console.warn(
+           "Can not attach worklet handlers for `react-native-keyboard-controller` because view tag can not be resolved. Be sure that `KeyboardProvider` is fully mounted before registering handlers. If you think it is a bug in library, please open an issue.",
+         );

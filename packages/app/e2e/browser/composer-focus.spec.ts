@@ -1,4 +1,4 @@
-import { test } from "../support/fixtures";
+import { expect, test } from "../support/fixtures";
 import {
   expectComposerDraft,
   expectComposerFocused,
@@ -10,6 +10,8 @@ import {
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 
 test("submitting a message leaves the composer ready for the next message", async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
   const agent = await seedMockAgentWorkspace({
     repoPrefix: "composer-focus-",
     title: "Composer focus",
@@ -24,12 +26,15 @@ test("submitting a message leaves the composer ready for the next message", asyn
 
     await typeIntoFocusedComposer(page, "Second message");
     await expectComposerDraft(page, "Second message");
+    expect(browserErrors).toEqual([]);
   } finally {
     await agent.cleanup();
   }
 });
 
 test("resizing across compact layouts retains the workspace and its draft", async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
   const agent = await seedMockAgentWorkspace({
     repoPrefix: "composer-window-",
     title: "Window resize draft",
@@ -47,6 +52,7 @@ test("resizing across compact layouts retains the workspace and its draft", asyn
         throw new Error(`Window width ${width} changed the active workspace`);
       }
     }
+    expect(browserErrors).toEqual([]);
   } finally {
     await agent.cleanup();
   }

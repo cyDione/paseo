@@ -37,6 +37,11 @@ const patchedPackages = [
     nodeModulesPath: "node_modules/react-native-gesture-handler",
     patchPrefix: "react-native-gesture-handler+",
   },
+  // RN Web 0.21 removed findNodeHandle; keyboard worklet handlers are native-only.
+  {
+    nodeModulesPath: "node_modules/react-native-keyboard-controller",
+    patchPrefix: "react-native-keyboard-controller+",
+  },
   {
     nodeModulesPath: "node_modules/react-native-svg",
     patchPrefix: "react-native-svg+",

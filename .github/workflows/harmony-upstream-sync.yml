@@ -67,6 +67,7 @@ jobs:
         if: steps.merge.outputs.changed == 'true'
         run: |
           node --test scripts/ci-workflow.test.mjs
+          npx vitest run packages/desktop/src/desktop-startup.test.ts --bail=1
           npm run test --workspace=@getpaseo/app -- src/mobile-panels/model.test.ts src/voice/voice-runtime.test.ts src/composer/clipboard-image.test.ts src/components/svg-root-transform.test.ts src/screens/settings/providers-section.test.tsx src/screens/settings/plugins-page.test.tsx --maxWorkers=2
       - name: Install browser for focused window and terminal checks
         if: steps.merge.outputs.changed == 'true'
