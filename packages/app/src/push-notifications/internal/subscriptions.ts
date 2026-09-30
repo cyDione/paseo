@@ -29,6 +29,10 @@ async function ensurePushPermission(): Promise<boolean> {
 }
 
 async function resolveToken(serverId: string): Promise<string | null> {
+  // Expo Push Service accepts APNs/FCM tokens. Harmony needs a Huawei Push Kit
+  // transport in the daemon before it can register a remote push subscription.
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return null;
+
   const key = storageKey(serverId);
   const cached = await readValidatedString(AsyncStorage, key, ExpoPushTokenSchema);
   if (!(await ensurePushPermission())) {

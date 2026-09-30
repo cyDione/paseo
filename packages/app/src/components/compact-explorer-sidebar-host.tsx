@@ -183,25 +183,18 @@ export function CompactExplorerSidebarHost({
     themedExplorer = <AppearanceStyleBoundary>{explorer}</AppearanceStyleBoundary>;
   }
 
-  if (presentation === "dock") {
-    return (
-      <View style={styles.row} onLayout={handleContainerLayout}>
-        <View style={styles.fill}>{children}</View>
-        {themedExplorer}
-      </View>
-    );
-  }
-
   return (
-    <>
-      <CompactExplorerOpenGestureSurface
-        enabled={enabled && Boolean(model?.workspaceRoot)}
-        onOpenExplorer={handleOpenExplorer}
-      >
-        {children}
-      </CompactExplorerOpenGestureSurface>
+    <View style={styles.row} onLayout={handleContainerLayout}>
+      <View style={styles.fill}>
+        <CompactExplorerOpenGestureSurface
+          enabled={presentation === "overlay" && enabled && Boolean(model?.workspaceRoot)}
+          onOpenExplorer={handleOpenExplorer}
+        >
+          {children}
+        </CompactExplorerOpenGestureSurface>
+      </View>
       {themedExplorer}
-    </>
+    </View>
   );
 }
 

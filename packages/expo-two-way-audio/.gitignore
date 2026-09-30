@@ -54,3 +54,12 @@ yarn-error.log
 
 examples/*/ios
 examples/*/android
+
+# Generated Harmony build outputs
+harmony/.hvigor/
+harmony/oh_modules/
+harmony/oh-package-lock.json5
+harmony/library/oh_modules/
+harmony/library/oh-package-lock.json5
+harmony/library.har
+harmony/library/BuildProfile.ets

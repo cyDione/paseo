@@ -1,5 +1,6 @@
 const { getDefaultConfig } = require("expo/metro-config");
-const { resolve } = require("metro-resolver");
+const { withHarmonyConfig } = require("@expo-harmony/metro-config");
+const { resolve } = require("@expo/metro/metro-resolver");
 const fs = require("fs");
 const path = require("path");
 
@@ -39,7 +40,7 @@ config.resolver.extraNodeModules = {
   "react/jsx-dev-runtime": path.join(appNodeModulesRoot, "react/jsx-dev-runtime"),
 };
 config.resolver.blockList = new RegExp(
-  `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*)$`,
+  `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*|${pathSeparatorPattern}(oh_modules|\\.hvigor)(${pathSeparatorPattern}.*)?)$`,
 );
 
 function isLocalModuleImport(moduleName) {
@@ -120,4 +121,8 @@ if (process.env.PASEO_SERVE_SIM_PREVIEW === "1") {
   };
 }
 
-module.exports = config;
+module.exports = withHarmonyConfig(config, {
+  enabled: process.env.EXPO_METRO_TARGET === "harmony",
+  projectRoot,
+  aliases: { react: "react-harmony" },
+});

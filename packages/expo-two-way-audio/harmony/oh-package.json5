@@ -1,0 +1,13 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "getpaseo_expo_two_way_audio-harmony",
+  "version": "0.10.0",
+  "license": "MIT",
+  "dependencies": {
+    "@getpaseo/expo-two-way-audio": "./library"
+  },
+  "overrides": {
+    "@expo-harmony/expo-modules-core": "55.0.26-harmony.2",
+    "@rnoh/react-native-openharmony": "0.84.1"
+  }
+}

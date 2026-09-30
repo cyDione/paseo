@@ -40,7 +40,10 @@ appearance keys; see [Unistyles appearance boundaries](unistyles.md#runtime-them
 ## Why one position
 
 Both transforms and both backdrop opacities are derived from the same normalized position. Window
-width is only a projection input. Rotation changes the projection, not the panel state.
+width is only a projection input. Rotation, folding and split-window resizing change
+the projection, not the panel state. Crossing the compact breakpoint must retain
+the gesture host and the navigator/editor ancestry; change gesture enablement
+without conditionally adding or removing a parent around the content.
 
 This makes these invalid states unrepresentable:
 

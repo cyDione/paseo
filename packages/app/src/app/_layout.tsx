@@ -553,20 +553,18 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
           {themedSidebarChrome}
         </WindowChromeRegion>
       ) : null}
-      {usesCompactExplorerHost ? (
-        <CompactExplorerSidebarHost
-          enabled={chromeEnabled}
-          presentation={explorerSidebarPresentation === "dock" ? "dock" : "overlay"}
+      <CompactExplorerSidebarHost
+        enabled={chromeEnabled && usesCompactExplorerHost}
+        presentation={explorerSidebarPresentation === "dock" ? "dock" : "overlay"}
+      >
+        <WindowChromeRegion
+          corners={
+            usesCompactExplorerHost && chromeEnabled ? "both" : appChromeLayout.contentCorners
+          }
         >
-          <WindowChromeRegion corners={chromeEnabled ? "both" : appChromeLayout.contentCorners}>
-            <View style={flexStyle}>{children}</View>
-          </WindowChromeRegion>
-        </CompactExplorerSidebarHost>
-      ) : (
-        <WindowChromeRegion corners={appChromeLayout.contentCorners}>
           <View style={flexStyle}>{children}</View>
         </WindowChromeRegion>
-      )}
+      </CompactExplorerSidebarHost>
     </View>
   );
 
@@ -616,13 +614,15 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     </View>
   );
 
-  const content = isCompactLayout ? (
-    <MobileGestureWrapper chromeEnabled={chromeEnabled}>{surface}</MobileGestureWrapper>
-  ) : (
-    surface
+  // Retain the navigator and editor when fold or split-window resizing crosses
+  // the compact breakpoint. Only the gesture's enabled state changes.
+  return (
+    <CommandCenterProvider>
+      <MobileGestureWrapper chromeEnabled={chromeEnabled && isCompactLayout}>
+        {surface}
+      </MobileGestureWrapper>
+    </CommandCenterProvider>
   );
-
-  return <CommandCenterProvider>{content}</CommandCenterProvider>;
 }
 
 function SidebarChrome({

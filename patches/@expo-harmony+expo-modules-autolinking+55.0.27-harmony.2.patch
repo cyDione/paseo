@@ -1,0 +1,135 @@
+diff --git a/node_modules/@expo-harmony/expo-modules-autolinking/build/src/autolinking/verify.js b/node_modules/@expo-harmony/expo-modules-autolinking/build/src/autolinking/verify.js
+index ffb2b6f..eb949be 100644
+--- a/node_modules/@expo-harmony/expo-modules-autolinking/build/src/autolinking/verify.js
++++ b/node_modules/@expo-harmony/expo-modules-autolinking/build/src/autolinking/verify.js
+@@ -93,9 +93,11 @@ function collectDescriptorConflicts(descriptors) {
+                     field: `HAR:${mapping.harPath}`,
+                 }), `${descriptor.packageRoot}\0${mapping.harPath}`);
+             }
++            if (rnohMetadata.etsPackageImport !== 'none') {
+             push(rnohEtsSymbols, rnohMetadata.etsPackageClassName, diagnosticSource(descriptor, {
+                 field: 'etsPackageClassName',
+             }), packageSource);
++            }
+             push(rnohCppSymbols, rnohMetadata.cppPackageClassName, diagnosticSource(descriptor, {
+                 field: 'cppPackageClassName',
+             }), packageSource);
+diff --git a/node_modules/@expo-harmony/expo-modules-autolinking/build/src/harmony/rnoh/link.js b/node_modules/@expo-harmony/expo-modules-autolinking/build/src/harmony/rnoh/link.js
+index 40152c0..c771f63 100644
+--- a/node_modules/@expo-harmony/expo-modules-autolinking/build/src/harmony/rnoh/link.js
++++ b/node_modules/@expo-harmony/expo-modules-autolinking/build/src/harmony/rnoh/link.js
+@@ -217,6 +217,14 @@ function patchEtsFactorySource(source, descriptors) {
+     const namedImports = new Map();
+     for (const descriptor of descriptors.filter(item => item.rnoh.harPaths.length > 0)) {
+         const rnohMetadata = (0, packageMetadata_1.resolveRnohMetadata)(descriptor);
++        // C++-only C-API packages have no ArkTS package export. Keep their native
++        // CMake and C++ registration while removing the generated ArkTS entries.
++        if (rnohMetadata.etsPackageImport === 'none') {
++          const name = rnohMetadata.harMappings[0].ohPackageName;
++          replacements.push([`import ${rnohMetadata.etsPackageClassName} from '${name}';\n`, '', 'C++-only package import']);
++          replacements.push([`    new ${rnohMetadata.etsPackageClassName}(ctx),\n`, '', 'C++-only package registration']);
++          continue;
++        }
+         if (rnohMetadata.etsPackageImport !== 'named')
+             continue;
+         const name = rnohMetadata.harMappings[0].ohPackageName;
+diff --git a/node_modules/@expo-harmony/expo-modules-autolinking/build/src/metadata/schema.js b/node_modules/@expo-harmony/expo-modules-autolinking/build/src/metadata/schema.js
+index a09e880..68ebadd 100644
+--- a/node_modules/@expo-harmony/expo-modules-autolinking/build/src/metadata/schema.js
++++ b/node_modules/@expo-harmony/expo-modules-autolinking/build/src/metadata/schema.js
+@@ -177,8 +177,8 @@ function normalizeRnohPackageMetadata(value, record) {
+         return {};
+     const rnoh = requireObject(value, 'package.json#harmony.autolinking must be an object.', record);
+     const etsPackageImport = rnoh.etsPackageImport;
+-    if (etsPackageImport !== undefined && etsPackageImport !== 'default' && etsPackageImport !== 'named') {
+-        throw new errors_1.HarmonyAutolinkingError('INVALID_METADATA', 'package.json#harmony.autolinking.etsPackageImport must be "default" or "named".', {
++    if (etsPackageImport !== undefined && etsPackageImport !== 'default' && etsPackageImport !== 'named' && etsPackageImport !== 'none') {
++        throw new errors_1.HarmonyAutolinkingError('INVALID_METADATA', 'package.json#harmony.autolinking.etsPackageImport must be "default", "named" or "none".', {
+             packageName: record.packageName,
+             stage: 'metadata-normalize',
+         });
+diff --git a/node_modules/@expo-harmony/expo-modules-autolinking/build/src/types.d.ts b/node_modules/@expo-harmony/expo-modules-autolinking/build/src/types.d.ts
+index 189d287..bc03fbb 100644
+--- a/node_modules/@expo-harmony/expo-modules-autolinking/build/src/types.d.ts
++++ b/node_modules/@expo-harmony/expo-modules-autolinking/build/src/types.d.ts
+@@ -25,7 +25,7 @@ export interface RnohMetadata {
+     readonly mainHarPath?: string;
+     readonly harPaths: ReadonlyArray<string>;
+     readonly etsPackageClassName?: string;
+-    readonly etsPackageImport?: 'default' | 'named';
++    readonly etsPackageImport?: 'default' | 'named' | 'none';
+     readonly cppPackageClassName?: string;
+     readonly cmakeLibraryTargetName?: string;
+ }
+diff --git a/node_modules/@expo-harmony/expo-modules-autolinking/src/autolinking/verify.ts b/node_modules/@expo-harmony/expo-modules-autolinking/src/autolinking/verify.ts
+index 4111e6e..cc93108 100644
+--- a/node_modules/@expo-harmony/expo-modules-autolinking/src/autolinking/verify.ts
++++ b/node_modules/@expo-harmony/expo-modules-autolinking/src/autolinking/verify.ts
+@@ -97,9 +97,11 @@ function collectDescriptorConflicts(descriptors) {
+           field: `HAR:${mapping.harPath}`,
+         }), `${descriptor.packageRoot}\0${mapping.harPath}`);
+       }
++      if (rnohMetadata.etsPackageImport !== 'none') {
+       push(rnohEtsSymbols, rnohMetadata.etsPackageClassName, diagnosticSource(descriptor, {
+         field: 'etsPackageClassName',
+       }), packageSource);
++      }
+       push(rnohCppSymbols, rnohMetadata.cppPackageClassName, diagnosticSource(descriptor, {
+         field: 'cppPackageClassName',
+       }), packageSource);
+diff --git a/node_modules/@expo-harmony/expo-modules-autolinking/src/harmony/rnoh/link.ts b/node_modules/@expo-harmony/expo-modules-autolinking/src/harmony/rnoh/link.ts
+index 6830430..cefedd0 100644
+--- a/node_modules/@expo-harmony/expo-modules-autolinking/src/harmony/rnoh/link.ts
++++ b/node_modules/@expo-harmony/expo-modules-autolinking/src/harmony/rnoh/link.ts
+@@ -228,6 +228,14 @@ function patchEtsFactorySource(source, descriptors) {
+   const namedImports = new Map();
+   for (const descriptor of descriptors.filter(item => item.rnoh.harPaths.length > 0)) {
+     const rnohMetadata = resolveRnohMetadata(descriptor);
++    // C++-only C-API packages have no ArkTS package export. Keep their native
++    // CMake and C++ registration while removing the generated ArkTS entries.
++    if (rnohMetadata.etsPackageImport === 'none') {
++      const name = rnohMetadata.harMappings[0].ohPackageName;
++      replacements.push([`import ${rnohMetadata.etsPackageClassName} from '${name}';\n`, '', 'C++-only package import']);
++      replacements.push([`    new ${rnohMetadata.etsPackageClassName}(ctx),\n`, '', 'C++-only package registration']);
++      continue;
++    }
+     if (rnohMetadata.etsPackageImport !== 'named') continue;
+ 
+     const name = rnohMetadata.harMappings[0].ohPackageName;
+diff --git a/node_modules/@expo-harmony/expo-modules-autolinking/src/metadata/schema.ts b/node_modules/@expo-harmony/expo-modules-autolinking/src/metadata/schema.ts
+index 5a4388f..610c9e5 100644
+--- a/node_modules/@expo-harmony/expo-modules-autolinking/src/metadata/schema.ts
++++ b/node_modules/@expo-harmony/expo-modules-autolinking/src/metadata/schema.ts
+@@ -175,8 +175,8 @@ function normalizeRnohPackageMetadata(
+   if (value == null || value === true) return {};
+   const rnoh = requireObject(value, 'package.json#harmony.autolinking must be an object.', record);
+   const etsPackageImport = rnoh.etsPackageImport;
+-  if (etsPackageImport !== undefined && etsPackageImport !== 'default' && etsPackageImport !== 'named') {
+-    throw new HarmonyAutolinkingError('INVALID_METADATA', 'package.json#harmony.autolinking.etsPackageImport must be "default" or "named".', {
++  if (etsPackageImport !== undefined && etsPackageImport !== 'default' && etsPackageImport !== 'named' && etsPackageImport !== 'none') {
++    throw new HarmonyAutolinkingError('INVALID_METADATA', 'package.json#harmony.autolinking.etsPackageImport must be "default", "named" or "none".', {
+       packageName: record.packageName,
+       stage: 'metadata-normalize',
+     });
+@@ -198,7 +198,7 @@ function normalizeRnohPackageMetadata(
+       ArkTsIdentifierPattern,
+       record
+     ),
+-    etsPackageImport: etsPackageImport as 'default' | 'named' | undefined,
++    etsPackageImport: etsPackageImport as 'default' | 'named' | 'none' | undefined,
+     cppPackageClassName: optionalIdentifier(
+       rnoh.cppPackageClassName,
+       'package.json#harmony.autolinking.cppPackageClassName',
+diff --git a/node_modules/@expo-harmony/expo-modules-autolinking/src/types.ts b/node_modules/@expo-harmony/expo-modules-autolinking/src/types.ts
+index 41a5d9d..9a83402 100644
+--- a/node_modules/@expo-harmony/expo-modules-autolinking/src/types.ts
++++ b/node_modules/@expo-harmony/expo-modules-autolinking/src/types.ts
+@@ -34,7 +34,7 @@ export interface RnohMetadata {
+   readonly mainHarPath?: string;
+   readonly harPaths: ReadonlyArray<string>;
+   readonly etsPackageClassName?: string;
+-  readonly etsPackageImport?: 'default' | 'named';
++  readonly etsPackageImport?: 'default' | 'named' | 'none';
+   readonly cppPackageClassName?: string;
+   readonly cmakeLibraryTargetName?: string;
+ }

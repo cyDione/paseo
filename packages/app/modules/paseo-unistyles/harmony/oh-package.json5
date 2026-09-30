@@ -1,0 +1,11 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "paseo-unistyles",
+  "version": "0.10.0",
+  "dependencies": {
+    "@getpaseo/unistyles-harmony": "./library"
+  },
+  "overrides": {
+    "@rnoh/react-native-openharmony": "0.84.1"
+  }
+}

@@ -5,6 +5,9 @@
 - Node.js (see `.tool-versions` for exact version)
 - npm workspaces (comes with Node)
 
+HarmonyOS tooling, native module versions and foldable device checks are documented
+in [harmony.md](harmony.md).
+
 ## Running the dev server
 
 ```bash
