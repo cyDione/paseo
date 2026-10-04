@@ -32,6 +32,17 @@ The generated `packages/app/harmony` directory is disposable. Keep app settings 
 `app.config.js`, native module metadata in `package.json`, and local module sources
 outside that generated directory. Changes to a source HAR require linking again.
 
+On a clean checkout `harmony:prepare` builds the module HARs and also leaves a stub
+`packages/app/harmony`. A stub makes `expo-harmony prebuild` skip project
+generation, so `harmony:build` then fails in doctor with a missing
+`build-profile.json5`. Run `harmony:prepare`, delete `packages/app/harmony`, run
+`expo-harmony prebuild`, then `harmony:build`. The workflow does this. The module
+HARs also need `npm run build:app-deps` first.
+
+The npm and OHPM versions of `expo-two-way-audio` must match. When upstream bumps
+its npm version, update both `oh-package.json5` files under
+`packages/expo-two-way-audio/harmony`, or `prepare` fails.
+
 Release builds export Hermes bytecode before compiling the native libraries. For
 native compiler troubleshooting, `EXPO_HARMONY_BUNDLE_PREBUILT=1` allows Hvigor to
 reuse an existing verified bytecode bundle. Rebuild through `npm run harmony:build`
@@ -65,15 +76,24 @@ requests in **Settings → Actions → General → Workflow permissions**. The t
 defaults to `main`; set `HARMONY_DOWNSTREAM_BRANCH` as a repository variable to
 maintain another branch containing the Harmony port and sync script.
 
-Full native validation uses a Linux x64 self-hosted runner with the official CLI
-26.0.0 installed. Register it with label `harmony-26`, or set
-`HARMONY_RUNNER_LABEL`. Set `HARMONY_ENV_FILE` to its DevEco activation script
-(default `/workspace/harmony-tools/env.sh`) and then set
-`HARMONY_NATIVE_CI_ENABLED=true`. That script must configure the complete SDK,
-Node 24.14.1, JDK 21, OHPM and Hvigor for the runner's account. This environment's
-verified installation can be reused; an authenticated Huawei archive download is
-not a reproducible unattended GitHub-hosted setup. The tested native build needs
-enough memory for a roughly 15 GB Hermes compiler peak; use a 32 GB runner.
+Native validation runs on a GitHub-hosted `ubuntu-latest` runner by default. Set
+`HARMONY_NATIVE_CI_ENABLED=true` to turn it on. The job downloads the DevEco CLI
+26.0.0.821 from the community release at
+[ErBWs/ohos-sdk](https://github.com/ErBWs/ohos-sdk), because the official archive
+needs a Huawei login. The three SHA-256 digests in the workflow pin the exact
+files. That archive is a third-party redistribution of Huawei software: the digests
+prove the files did not change, not that they match Huawei's. Use a self-hosted
+runner if that trust is not acceptable. Bump the URL and all three digests together.
+
+The hosted runner has 16 GB of memory against a roughly 15 GB Hermes compiler peak
+reported for the tested build, so the job adds a 16 GB swap file. If the compile
+runs out of memory anyway, use a self-hosted runner.
+
+To use a self-hosted Linux x64 runner instead, give it a label and set
+`HARMONY_RUNNER_LABEL` to that label. Set `HARMONY_ENV_FILE` to its DevEco
+activation script (default `/workspace/harmony-tools/env.sh`). That script must
+configure the complete SDK, Node 24.14.1, JDK 21, OHPM and Hvigor for the runner's
+account. Use 32 GB of memory.
 
 Without native CI, updates remain draft PRs. Native failures also keep PRs in
 draft. A successful build uploads an unsigned HAP and its checksum to the run's

@@ -96,11 +96,17 @@ jobs:
     name: Build unsigned Harmony Release HAP
     needs: prepare
     if: ${{ !cancelled() && needs.prepare.outputs.candidate_sha != '' && needs.prepare.result == 'success' && vars.HARMONY_NATIVE_CI_ENABLED == 'true' }}
-    runs-on: [self-hosted, linux, x64, "${{ vars.HARMONY_RUNNER_LABEL || 'harmony-26' }}"]
+    runs-on: ${{ vars.HARMONY_RUNNER_LABEL && fromJSON(format('["self-hosted","linux","x64","{0}"]', vars.HARMONY_RUNNER_LABEL)) || 'ubuntu-latest' }}
     timeout-minutes: 90
     env:
       HARMONY_ENV_FILE: ${{ vars.HARMONY_ENV_FILE || '/workspace/harmony-tools/env.sh' }}
       HARMONY_CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+      # Community redistribution of the official DevEco CLI 26.0.0.821 (ErBWs/ohos-sdk).
+      # Used only on GitHub-hosted runners; bump the version and all three digests together.
+      HARMONY_SDK_URL: https://github.com/ErBWs/ohos-sdk/releases/download/26.0.0.821/ohos-sdk-linux-amd64.tar.gz
+      HARMONY_SDK_PART_AA_SHA256: 4321eb328558169e9531594139910a42b1c88057fb09f852be85ff2487e6adbc
+      HARMONY_SDK_PART_AB_SHA256: 26e9ae251e761fbc9ec4e7ad780b5b291130e7824af2324167530941e11ad592
+      HARMONY_SDK_SHA256: 0cbdf7ac5c1be1e42694d448ffaee0c0be0ba9a948197e2bc5b61ca5bdc481f2
     steps:
       - name: Set output directory
         run: echo "HARMONY_SYNC_DIR=$RUNNER_TEMP/harmony-sync" >> "$GITHUB_ENV"
@@ -118,6 +124,74 @@ jobs:
           git fetch "$HARMONY_SYNC_DIR/candidate.bundle" HEAD
           test "$(git rev-parse FETCH_HEAD)" = "$HARMONY_CANDIDATE_SHA"
           git checkout --detach FETCH_HEAD
+      - name: Prepare the hosted runner
+        if: ${{ vars.HARMONY_RUNNER_LABEL == '' }}
+        shell: bash
+        run: |
+          # The Hermes compile peaks near 15 GB and the hosted runner has 16 GB.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          # The SDK's resource compiler and linker need these shared libraries.
+          sudo apt-get update -o Dpkg::Use-Pty=0
+          sudo apt-get install -y --no-install-recommends -o Dpkg::Use-Pty=0 \
+            libgl1 libegl1 libgles2 libglx0 libxml2 libexpat1-dev libjsoncpp-dev
+          free -g
+          df -h / /mnt
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        if: ${{ vars.HARMONY_RUNNER_LABEL == '' }}
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        if: ${{ vars.HARMONY_RUNNER_LABEL == '' }}
+        with:
+          node-version: "24.14.1"
+      - name: Install the DevEco CLI 26.0.0 on the hosted runner
+        if: ${{ vars.HARMONY_RUNNER_LABEL == '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          download="$RUNNER_TEMP/harmony-sdk-download"
+          root="$RUNNER_TEMP/harmony-sdk"
+          mkdir -p "$download" "$root"
+          curl -fL --retry 5 --retry-delay 5 -o "$download/aa" "$HARMONY_SDK_URL.aa"
+          curl -fL --retry 5 --retry-delay 5 -o "$download/ab" "$HARMONY_SDK_URL.ab"
+          printf '%s  %s\n' "$HARMONY_SDK_PART_AA_SHA256" "$download/aa" "$HARMONY_SDK_PART_AB_SHA256" "$download/ab" | sha256sum -c -
+          test "$(cat "$download/aa" "$download/ab" | sha256sum | cut -d' ' -f1)" = "$HARMONY_SDK_SHA256"
+          cat "$download/aa" "$download/ab" | tar -xz -C "$root"
+          rm -rf "$download"
+          tools=""
+          while IFS= read -r candidate; do
+            dir="$(dirname "$(dirname "$candidate")")"
+            if [ -x "$dir/bin/hvigorw" ] && [ -d "$dir/sdk/default" ]; then
+              tools="$dir"
+              break
+            fi
+          done < <(find "$root" -maxdepth 5 -type f -path '*/bin/hvigorw')
+          test -n "$tools"
+          if [ "$tools" != "$root/command-line-tools" ]; then
+            mv "$tools" "$root/command-line-tools"
+          fi
+          sdk="$root/command-line-tools/sdk/default"
+          libs="$sdk/openharmony/previewer/common/bin:$sdk/hms/toolchains/lib"
+          node_home="$(dirname "$(dirname "$(command -v node)")")"
+          env_file="$RUNNER_TEMP/harmony-env.sh"
+          {
+            printf 'export JAVA_HOME=%q\n' "$JAVA_HOME"
+            printf 'export COMMANDLINE_TOOL_DIR=%q\n' "$root"
+            printf 'export NODE_HOME=%q\n' "$node_home"
+            printf 'export DEVECO_NODE_HOME=%q\n' "$root/command-line-tools/tool/node"
+            printf 'export DEVECO_SDK_HOME=%q\n' "$root/command-line-tools/sdk"
+            printf 'export HDC_HOME=%q\n' "$sdk/openharmony/toolchains"
+            printf 'export HVIGOR_USER_HOME=%q\n' "$RUNNER_TEMP/hvigor-home"
+          } > "$env_file"
+          {
+            echo "HARMONY_ENV_FILE=$env_file"
+            echo "HARMONY_LD_LIBRARY_PATH=$libs"
+          } >> "$GITHUB_ENV"
       - name: Activate installed DevEco CLI 26.0.0
         shell: bash
         run: |
@@ -131,8 +205,20 @@ jobs:
           test "$(node --version)" = v24.14.1
           java -version
       - name: Install and build the native target
+        shell: bash
         run: |
           npm ci --no-audit --no-fund
+          # The SDK's bundled libraries stay out of Node's path until the Harmony tools run.
+          if [ -n "${HARMONY_LD_LIBRARY_PATH:-}" ]; then
+            export LD_LIBRARY_PATH="$HARMONY_LD_LIBRARY_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          fi
+          # The prepare job built these on another runner; the Hermes export needs them here.
+          npm run build:app-deps
+          # prepare builds the module HARs but also leaves a stub harmony/ directory that
+          # makes prebuild skip project generation. Remove the stub, then generate.
+          npm run harmony:prepare --workspace=@getpaseo/app
+          rm -rf packages/app/harmony
+          npm exec --workspace=@getpaseo/app -- expo-harmony prebuild
           npm run harmony:build
           npm run harmony:doctor
           npm run harmony:modules --workspace=@getpaseo/app

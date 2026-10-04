@@ -1,7 +1,7 @@
 {
   modelVersion: "5.0.0",
   name: "getpaseo_expo_two_way_audio-harmony",
-  version: "0.10.0",
+  version: "0.11.0-beta.3",
   license: "MIT",
   dependencies: {
     "@getpaseo/expo-two-way-audio": "./library",

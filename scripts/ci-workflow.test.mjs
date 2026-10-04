@@ -500,6 +500,33 @@ test("Harmony updates stay draft and never auto-merge without both successful ch
   );
 });
 
+test("Harmony hosted runners verify the community SDK against pinned digests", () => {
+  const source = readFileSync(
+    new URL(".github/workflows/harmony-upstream-sync.yml", repoRoot),
+    "utf8",
+  );
+  const native = jobBlocks(source).get("native").join("\n");
+  for (const name of [
+    "HARMONY_SDK_PART_AA_SHA256",
+    "HARMONY_SDK_PART_AB_SHA256",
+    "HARMONY_SDK_SHA256",
+  ]) {
+    assert.match(native, new RegExp(`${name}: [0-9a-f]{64}\\n`));
+  }
+  assert.match(
+    native,
+    /HARMONY_SDK_URL: https:\/\/github\.com\/ErBWs\/ohos-sdk\/releases\/download\/26\.0\.0\.821\//,
+  );
+  assert.match(native, /sha256sum -c -/);
+  assert.match(native, /= "\$HARMONY_SDK_SHA256"/);
+  // Every action stays pinned to a commit, including the ones added for hosted runners.
+  for (const [, ref] of native.matchAll(/uses: [\w.-]+\/[\w.-]+@(\S+)/g)) {
+    assert.match(ref, /^[0-9a-f]{40}$/);
+  }
+  // SDK libraries must not shadow Node's libraries for the whole job.
+  assert.doesNotMatch(native, /\n\s+echo "LD_LIBRARY_PATH=/);
+});
+
 test("Harmony sync validates with read-only credentials and publishes from the trusted base", () => {
   const source = readFileSync(
     new URL(".github/workflows/harmony-upstream-sync.yml", repoRoot),
@@ -514,6 +541,13 @@ test("Harmony sync validates with read-only credentials and publishes from the t
   assert.doesNotMatch(native, /contents: write|GH_TOKEN:/);
   assert.match(native, /HARMONY_NATIVE_CI_ENABLED == 'true'/);
   assert.match(native, /npm run harmony:build/);
+  assert.match(native, /\|\| 'ubuntu-latest'/);
+  assert.match(native, /vars\.HARMONY_RUNNER_LABEL/);
+  assert.match(native, /npm run build:app-deps/);
+  assert.match(
+    native,
+    /rm -rf packages\/app\/harmony\n\s+npm exec --workspace=@getpaseo\/app -- expo-harmony prebuild/,
+  );
   assert.match(publish, /contents: write\s*\n\s+pull-requests: write/);
   assert.match(publish, /ref: \$\{\{ needs\.prepare\.outputs\.base_sha \}\}/);
   assert.doesNotMatch(publish, /npm ci|npm run/);
