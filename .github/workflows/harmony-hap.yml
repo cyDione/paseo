@@ -1,0 +1,58 @@
+name: Harmony HAP
+
+# Builds the unsigned Release HAP for the checked-out commit. Push to a harmony/* branch
+# or run it by hand. Unlike Harmony Upstream Sync it does not merge upstream.
+on:
+  push:
+    branches:
+      - "harmony/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harmony-hap-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ONNXRUNTIME_NODE_INSTALL: skip
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+  SKIP_SKIA_DOWNLOAD: "1"
+  LEFTHOOK: "0"
+  NODE_USE_ENV_PROXY: "1"
+
+jobs:
+  hap:
+    name: Build unsigned Harmony Release HAP
+    runs-on: ${{ vars.HARMONY_RUNNER_LABEL && fromJSON(format('["self-hosted","linux","x64","{0}"]', vars.HARMONY_RUNNER_LABEL)) || 'ubuntu-latest' }}
+    timeout-minutes: 150
+    env:
+      HARMONY_ENV_FILE: ${{ vars.HARMONY_ENV_FILE || '/workspace/harmony-tools/env.sh' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/harmony-toolchain
+        with:
+          hosted: ${{ vars.HARMONY_RUNNER_LABEL == '' }}
+      - uses: ./.github/actions/harmony-build
+      - name: Verify HAP and embedded bytecode
+        shell: bash
+        run: |
+          hap=packages/app/harmony/entry/build/default/outputs/default/entry-default-unsigned.hap
+          out="$RUNNER_TEMP/harmony-hap"
+          mkdir -p "$out"
+          unzip -t "$hap" > "$out/hap-integrity.log"
+          unzip -p "$hap" resources/rawfile/hermes_bundle.hbc > "$out/packaged.hermes.hbc"
+          cmp "$out/packaged.hermes.hbc" packages/app/harmony/entry/src/main/resources/rawfile/hermes_bundle.hbc
+          cp "$hap" "$out/paseo-harmony-unsigned.hap"
+          printf '{"commit":"%s","ref":"%s","run":"%s"}\n' "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" > "$out/source.json"
+          cd "$out"
+          sha256sum paseo-harmony-unsigned.hap > paseo-harmony-unsigned.hap.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: harmony-hap-${{ github.sha }}
+          path: ${{ runner.temp }}/harmony-hap/
+          compression-level: 0
+          retention-days: 14

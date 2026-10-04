@@ -89,6 +89,12 @@ The hosted runner has 16 GB of memory against a roughly 15 GB Hermes compiler pe
 reported for the tested build, so the job adds a 16 GB swap file. If the compile
 runs out of memory anyway, use a self-hosted runner.
 
+`Harmony HAP` (`harmony-hap.yml`) builds the unsigned HAP for the commit you push
+to any `harmony/**` branch, or run it by hand. It needs no repository variable and
+does not merge upstream, so it works for feature work that the sync workflow skips.
+Both workflows share the toolchain install and the build steps in
+`.github/actions/harmony-toolchain` and `.github/actions/harmony-build`.
+
 To use a self-hosted Linux x64 runner instead, give it a label and set
 `HARMONY_RUNNER_LABEL` to that label. Set `HARMONY_ENV_FILE` to its DevEco
 activation script (default `/workspace/harmony-tools/env.sh`). That script must

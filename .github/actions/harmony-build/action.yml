@@ -1,0 +1,24 @@
+name: Harmony build
+description: Install dependencies and build the unsigned Harmony Release HAP. Run harmony-toolchain first.
+
+runs:
+  using: composite
+  steps:
+    - name: Install and build the native HAP
+      shell: bash
+      run: |
+        npm ci --no-audit --no-fund
+        # The SDK's bundled libraries stay out of Node's path until the Harmony tools run.
+        if [ -n "${HARMONY_LD_LIBRARY_PATH:-}" ]; then
+          export LD_LIBRARY_PATH="$HARMONY_LD_LIBRARY_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        fi
+        # npm ci does not build the workspace packages; the Hermes export needs their dist output.
+        npm run build:app-deps
+        # prepare builds the module HARs but also leaves a stub harmony/ directory that
+        # makes prebuild skip project generation. Remove the stub, then generate.
+        npm run harmony:prepare --workspace=@getpaseo/app
+        rm -rf packages/app/harmony
+        npm exec --workspace=@getpaseo/app -- expo-harmony prebuild
+        npm run harmony:build
+        npm run harmony:doctor
+        npm run harmony:modules --workspace=@getpaseo/app
