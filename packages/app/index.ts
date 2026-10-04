@@ -1,3 +1,7 @@
+// Hermes on HarmonyOS has no Intl. Install it first, as modules read it while loading.
+// oxlint-disable-next-line import/no-unassigned-import -- The import installs the polyfill.
+import "./src/polyfills/intl-install";
+
 // Polyfill crypto.randomUUID for React Native before any other imports
 import { polyfillCrypto } from "./src/polyfills/crypto";
 polyfillCrypto();

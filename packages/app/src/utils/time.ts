@@ -53,7 +53,7 @@ function describeAge(date: Date, now: Date): Age {
     return { kind: "elapsed", value: `${Math.floor(elapsedMs / DAY_MS)}d`, resolution: "day" };
   }
 
-  const month = date.toLocaleDateString("en-US", { month: "short" });
+  const month = new Intl.DateTimeFormat("en-US", { month: "short" }).format(date);
   return { kind: "date", value: `${month} ${date.getDate()}`, resolution: "static" };
 }
 
@@ -107,6 +107,12 @@ function localCalendarDaysBetween(earlier: Date, later: Date): number {
   return Math.round((startOfDay(later).getTime() - startOfDay(earlier).getTime()) / DAY_MS);
 }
 
+// `toLocaleDateString` ignores its options on a Hermes build without Intl (HarmonyOS), so
+// the date labels go through `Intl.DateTimeFormat`, which the Intl polyfill covers.
+function formatDateParts(date: Date, options: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat(undefined, options).format(date);
+}
+
 // Cached Intl formatter. Explicitly carrying `hourCycle` from the resolved
 // options is what makes the runtime respect the user's OS-level 12h/24h
 // preference rather than the locale's default cycle.
@@ -140,11 +146,11 @@ export function formatMessageTimestamp(date: Date, now: Date = new Date()): stri
   }
 
   if (daysAgo > 0 && daysAgo < 7) {
-    const weekday = date.toLocaleDateString(undefined, { weekday: "long" });
+    const weekday = formatDateParts(date, { weekday: "long" });
     return `${weekday} ${time}`;
   }
 
-  const dateLabel = date.toLocaleDateString(undefined, {
+  const dateLabel = formatDateParts(date, {
     day: "numeric",
     month: "short",
     year: "numeric",

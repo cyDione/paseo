@@ -143,6 +143,17 @@ paste an image through **Add attachment → Paste image**. This action uses the
 Harmony clipboard module. The iOS/Android Mattermost input is not loaded on
 Harmony.
 
+The Hermes build in RNOH has no `Intl` global. Any reference to it throws
+`Property 'Intl' doesn't exist`, and three modules read it while loading, so the app
+dies at startup. `packages/app/src/polyfills/intl.ts` installs `NumberFormat` and
+`DateTimeFormat` when the runtime has no `Intl`, and `index.ts` loads it first. The
+output is English (en-US) whatever the locale; the time zone and 12/24-hour clock come
+from `expo-localization`. `Segmenter` and `PluralRules` are left out because the app and
+i18next check for them and fall back. Do not call `toLocaleDateString` or
+`toLocaleString` with options: Hermes ignores the options without `Intl`. Use
+`Intl.DateTimeFormat` or `Intl.NumberFormat`, and extend the polyfill, with a test against
+Node's `Intl`, when a screen needs an option it does not handle.
+
 The native notification module is linked, but Paseo's background notification
 transport uses Expo Push Service, which does not support HarmonyOS. The Harmony
 app skips Expo token registration. Huawei Push Kit requires an AppGallery Connect
