@@ -126,14 +126,21 @@ jobs:
         shell: bash
         run: |
           hap=packages/app/harmony/entry/build/default/outputs/default/entry-default-unsigned.hap
+          map=packages/app/.expo/harmony/export/hermes_bundle.hbc.map
           unzip -t "$hap" > "$HARMONY_SYNC_DIR/hap-integrity.log"
           unzip -p "$hap" resources/rawfile/hermes_bundle.hbc > "$HARMONY_SYNC_DIR/packaged.hermes.hbc"
           cmp "$HARMONY_SYNC_DIR/packaged.hermes.hbc" packages/app/harmony/entry/src/main/resources/rawfile/hermes_bundle.hbc
           mkdir -p "$RUNNER_TEMP/harmony-hap"
           cp "$hap" "$RUNNER_TEMP/harmony-hap/paseo-harmony-unsigned.hap"
+          if [[ ! -f "$map" ]]; then
+            echo "Hermes source map is missing at $map; the export step produced no map." >&2
+            exit 1
+          fi
+          cp "$map" "$RUNNER_TEMP/harmony-hap/hermes_bundle.hbc.map"
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["version"]==3, "expected source map version 3, got %r" % m.get("version")' "$RUNNER_TEMP/harmony-hap/hermes_bundle.hbc.map"
           cp "$HARMONY_SYNC_DIR/metadata.json" "$RUNNER_TEMP/harmony-hap/source.json"
           cd "$RUNNER_TEMP/harmony-hap"
-          sha256sum paseo-harmony-unsigned.hap > paseo-harmony-unsigned.hap.sha256
+          sha256sum paseo-harmony-unsigned.hap hermes_bundle.hbc.map > paseo-harmony-unsigned.hap.sha256
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: harmony-hap-${{ needs.prepare.outputs.candidate_sha }}

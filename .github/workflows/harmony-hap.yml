@@ -41,15 +41,22 @@ jobs:
         shell: bash
         run: |
           hap=packages/app/harmony/entry/build/default/outputs/default/entry-default-unsigned.hap
+          map=packages/app/.expo/harmony/export/hermes_bundle.hbc.map
           out="$RUNNER_TEMP/harmony-hap"
           mkdir -p "$out"
           unzip -t "$hap" > "$out/hap-integrity.log"
           unzip -p "$hap" resources/rawfile/hermes_bundle.hbc > "$out/packaged.hermes.hbc"
           cmp "$out/packaged.hermes.hbc" packages/app/harmony/entry/src/main/resources/rawfile/hermes_bundle.hbc
           cp "$hap" "$out/paseo-harmony-unsigned.hap"
+          if [[ ! -f "$map" ]]; then
+            echo "Hermes source map is missing at $map; the export step produced no map." >&2
+            exit 1
+          fi
+          cp "$map" "$out/hermes_bundle.hbc.map"
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["version"]==3, "expected source map version 3, got %r" % m.get("version")' "$out/hermes_bundle.hbc.map"
           printf '{"commit":"%s","ref":"%s","run":"%s"}\n' "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" > "$out/source.json"
           cd "$out"
-          sha256sum paseo-harmony-unsigned.hap > paseo-harmony-unsigned.hap.sha256
+          sha256sum paseo-harmony-unsigned.hap hermes_bundle.hbc.map > paseo-harmony-unsigned.hap.sha256
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: harmony-hap-${{ github.sha }}

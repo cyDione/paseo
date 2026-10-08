@@ -107,9 +107,11 @@ configure the complete SDK, Node 24.14.1, JDK 21, OHPM and Hvigor for the runner
 account. Use 32 GB of memory.
 
 Without native CI, updates remain draft PRs. Native failures also keep PRs in
-draft. A successful build uploads an unsigned HAP and its checksum to the run's
-`harmony-hap-<commit>` artifact for 14 days; it does not replace a release or the
-checked-in `hap/` package. Signing and device validation remain separate.
+draft. A successful build uploads an unsigned HAP, its checksum and the Hermes
+source map to the run's `harmony-hap-<commit>` artifact for 14 days; the map
+(`hermes_bundle.hbc.map`) turns a bytecode offset from a device `jscrash` stack
+back into a source line. It does not replace a release or the checked-in `hap/`
+package. Signing and device validation remain separate.
 
 Automatic merge is off by default. Enable the repository's auto-merge setting and
 set `HARMONY_AUTO_MERGE=true` only if unattended merges are wanted. It requires
@@ -164,6 +166,13 @@ transport uses Expo Push Service, which does not support HarmonyOS. The Harmony
 app skips Expo token registration. Huawei Push Kit requires an AppGallery Connect
 application, signing configuration and a daemon transport adapter. In-app agent
 updates continue through the existing connection.
+
+RNOH's status bar manager defaults the status bar content color to white, which
+leaves the light themes with a system-drawn contrast backdrop behind the clock
+and icons. `packages/app/src/appearance/use-system-bars.harmony.ts` resolves the
+effective color scheme from the contributed theme or the theme preference, with
+`auto` following the system scheme, and calls `StatusBar.setBarStyle`. It re-runs
+when the system scheme changes.
 
 ## Foldable and split-window behavior
 

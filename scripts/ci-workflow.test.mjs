@@ -551,6 +551,14 @@ test("Harmony HAP workflow builds the pushed commit with read-only credentials",
   assert.match(source, /uses: \.\/\.github\/actions\/harmony-build/);
   assert.match(source, /\|\| 'ubuntu-latest'/);
   assert.doesNotMatch(source, /contents: write|GH_TOKEN:|pull_request/);
+  assert.match(source, /map=packages\/app\/\.expo\/harmony\/export\/hermes_bundle\.hbc\.map/);
+  assert.match(source, /cp "\$map" "\$out\/hermes_bundle\.hbc\.map"/);
+  assert.match(source, /m\["version"\]==3/);
+  assert.match(source, /Hermes source map is missing/);
+  assert.match(
+    source,
+    /sha256sum paseo-harmony-unsigned\.hap hermes_bundle\.hbc\.map > paseo-harmony-unsigned\.hap\.sha256/,
+  );
 });
 
 test("Harmony sync validates with read-only credentials and publishes from the trusted base", () => {
@@ -574,4 +582,7 @@ test("Harmony sync validates with read-only credentials and publishes from the t
   assert.match(publish, /ref: \$\{\{ needs\.prepare\.outputs\.base_sha \}\}/);
   assert.doesNotMatch(publish, /npm ci|npm run/);
   assert.match(publish, /HARMONY_AUTO_MERGE:.*\|\| 'false'/);
+  assert.match(native, /map=packages\/app\/\.expo\/harmony\/export\/hermes_bundle\.hbc\.map/);
+  assert.match(native, /assert m\["version"\]==3/);
+  assert.match(native, /sha256sum paseo-harmony-unsigned\.hap hermes_bundle\.hbc\.map/);
 });
