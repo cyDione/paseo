@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Shortcut } from "@/components/ui/shortcut";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { isWeb } from "@/constants/platform";
+import { platformChromeStyles } from "@/styles/platform-chrome";
 import {
   iconButtonChromeFrameStyle,
   iconButtonChromeStyle,
@@ -53,7 +54,7 @@ export function HeaderToggleButton({
           size: "large",
           state: { hovered: Boolean(hovered), pressed },
           disabled: Boolean(disabled),
-          style,
+          style: [style, platformChromeStyles.headerButton],
         }),
     [disabled, style],
   );
