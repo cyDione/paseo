@@ -6,6 +6,10 @@ runs:
   steps:
     - name: Install and build the native HAP
       shell: bash
+      # A cold hosted build spends about 14 minutes in Hvigor and the expo-harmony CLI
+      # kills the build after 15, so give it room before the job timeout applies.
+      env:
+        EXPO_HARMONY_HVIGOR_BUILD_TIMEOUT_MS: "2700000"
       run: |
         npm ci --no-audit --no-fund
         # The SDK's bundled libraries stay out of Node's path until the Harmony tools run.

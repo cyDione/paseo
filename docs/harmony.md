@@ -89,6 +89,11 @@ The hosted runner has 16 GB of memory against a roughly 15 GB Hermes compiler pe
 reported for the tested build, so the job adds a 16 GB swap file. If the compile
 runs out of memory anyway, use a self-hosted runner.
 
+The expo-harmony CLI kills the Hvigor build after 15 minutes by default. A cold
+hosted build already takes about 14, so `harmony-build` raises
+`EXPO_HARMONY_HVIGOR_BUILD_TIMEOUT_MS`. Lower it only if the Hvigor build gets
+faster; the job timeout still bounds a hung build.
+
 `Harmony HAP` (`harmony-hap.yml`) builds the unsigned HAP for the commit you push
 to any `harmony/**` branch, or run it by hand. It needs no repository variable and
 does not merge upstream, so it works for feature work that the sync workflow skips.
