@@ -21,6 +21,7 @@ import {
 } from "@/plugins/themes";
 import { PLUGIN_THEME_NAMES, PLUGIN_THEME_PREFERENCE, THEME_TO_UNISTYLES } from "@/styles/theme";
 import { applyAppearance } from "./apply";
+import { useSystemBars } from "./use-system-bars";
 
 interface ContributedThemes {
   options: PluginThemeOption[];
@@ -63,6 +64,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     if (settings.theme !== PLUGIN_THEME_PREFERENCE) return null;
     return options.find((option) => option.id === settings.pluginThemeId) ?? null;
   }, [options, settings.pluginThemeId, settings.theme]);
+  useSystemBars(settings.theme, selected);
 
   useEffect(() => {
     if (isLoading) return;
