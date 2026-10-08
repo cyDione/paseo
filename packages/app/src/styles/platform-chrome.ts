@@ -7,4 +7,5 @@ import { StyleSheet } from "react-native-unistyles";
  */
 export const platformChromeStyles = StyleSheet.create({
   headerButton: {},
+  composerCard: {},
 });

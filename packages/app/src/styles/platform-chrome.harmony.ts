@@ -10,4 +10,9 @@ export const platformChromeStyles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     ...theme.shadow.md,
   },
+  // Shadow only. The card's 16px radius is the tangent point the pills above it align
+  // to (composer/pill-styles.ts), and the border stays as the resting edge.
+  composerCard: {
+    ...theme.shadow.md,
+  },
 }));

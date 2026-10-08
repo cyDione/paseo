@@ -21,6 +21,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { platformChromeStyles } from "@/styles/platform-chrome";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import { useDictation } from "@/hooks/use-dictation";
 import { DictationOverlay } from "@/components/dictation-controls";
@@ -1726,6 +1727,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         readOnly && styles.inputWrapperReadOnly,
         inputWrapperStyle,
         { opacity: surfacePresentation.input.opacity },
+        platformChromeStyles.composerCard,
       ],
       [inputWrapperStyle, readOnly, surfacePresentation.input.opacity],
     );
