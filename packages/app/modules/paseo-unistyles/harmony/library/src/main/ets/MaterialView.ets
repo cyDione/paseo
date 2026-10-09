@@ -72,7 +72,8 @@ function createMaterial(rawProps: PaseoMaterialRawProps): uiMaterial.Material | 
     options.materialColor = rawProps.materialColor;
   }
   if (rawProps.lightColor !== undefined) {
-    options.lightEffect = { color: rawProps.lightColor };
+    const lightEffect: uiMaterial.LightEffectOptions = { color: rawProps.lightColor };
+    options.lightEffect = lightEffect;
   }
   return new uiMaterial.ImmersiveMaterial(options);
 }
@@ -125,16 +126,29 @@ class PaseoMaterialAttributeModifier implements AttributeModifier<StackAttribute
   applyNormalAttribute(instance: StackAttribute): void {
     const view = new ViewDescriptorWrapperBase(this.descriptor);
     const radius = view.borderRadius;
-    instance.borderRadius({
+    const radiuses: BorderRadiuses = {
       topLeft: radius.topLeft,
       topRight: radius.topRight,
       bottomLeft: radius.bottomLeft,
       bottomRight: radius.bottomRight,
-    });
+    };
+    instance.borderRadius(radiuses);
     const width = view.borderWidth;
-    instance.borderWidth({ top: width.top, right: width.right, bottom: width.bottom, left: width.left });
+    const widths: EdgeWidths = {
+      top: width.top,
+      right: width.right,
+      bottom: width.bottom,
+      left: width.left,
+    };
+    instance.borderWidth(widths);
     const color = view.borderColor;
-    instance.borderColor({ top: color.top, right: color.right, bottom: color.bottom, left: color.left });
+    const colors: EdgeColors = {
+      top: color.top,
+      right: color.right,
+      bottom: color.bottom,
+      left: color.left,
+    };
+    instance.borderColor(colors);
     instance.borderStyle(toBorderStyle(view.borderStyle));
     const opacity = view.opacity;
     if (opacity !== 1) {
