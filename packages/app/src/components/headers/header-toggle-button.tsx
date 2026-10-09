@@ -3,7 +3,7 @@ import { Text, View, type PressableProps, type StyleProp, type ViewStyle } from 
 import { StyleSheet } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
-import { GlassLayer } from "@/components/ui/glass-layer";
+import { GLASS_LAYER_ENABLED, GlassLayer } from "@/components/ui/glass-layer";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { isWeb } from "@/constants/platform";
 import { platformChromeStyles } from "@/styles/platform-chrome";
@@ -60,10 +60,19 @@ export function HeaderToggleButton({
           size: "large",
           state: { hovered: Boolean(hovered), pressed },
           disabled: Boolean(disabled),
-          style: [style, platformChromeStyles.headerButton],
+          style: GLASS_LAYER_ENABLED ? [style, platformChromeStyles.headerButton] : style,
         }),
     [disabled, style],
   );
+
+  // The pre-glass rendering path, kept verbatim: a function child reaches the trigger as a
+  // state function, a node child reaches it as-is. Harmony wraps this in another state function
+  // so the glass layer can sit under the icon.
+  const baselineChildren =
+    typeof children === "function"
+      ? (state: { pressed: boolean; hovered?: boolean }) =>
+          children({ hovered: Boolean(state.hovered), pressed: state.pressed })
+      : children;
 
   return (
     <Tooltip delayDuration={tooltipDelayDuration} enabledOnDesktop enabledOnMobile={false}>
@@ -74,14 +83,16 @@ export function HeaderToggleButton({
         onPress={onPress}
         style={combinedStyle}
       >
-        {(state: { pressed: boolean; hovered?: boolean }) => (
-          <>
-            <GlassLayer thickness="regular" style={GLASS_LAYER_STYLE} />
-            {typeof children === "function"
-              ? children({ hovered: Boolean(state.hovered), pressed: state.pressed })
-              : children}
-          </>
-        )}
+        {GLASS_LAYER_ENABLED
+          ? (state: { pressed: boolean; hovered?: boolean }) => (
+              <>
+                <GlassLayer thickness="regular" interactive style={GLASS_LAYER_STYLE} />
+                {typeof baselineChildren === "function"
+                  ? baselineChildren(state)
+                  : baselineChildren}
+              </>
+            )
+          : baselineChildren}
       </TooltipTrigger>
       <TooltipContent testID={tooltipTestID} side={tooltipSide} align="center" offset={8}>
         <View style={styles.tooltipRow}>
