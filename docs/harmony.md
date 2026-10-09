@@ -280,24 +280,35 @@ the material is verified on a device:
 | Orange cast mixed into the fill               | The material degraded to the backdrop-blur path                                             | `materialDegradedFillColor` in `material-color.ts`         |
 | No tint                                       | The system material applied                                                                 | —                                                          |
 
-`hdc hilog | grep PaseoMaterial` prints one line per material change:
+### Diagnosing it on a device
+
+Every `PaseoMaterial:` line is **WARN**, never INFO. A device's default global log level is `W`
+(`param get hilog.loggable.global`), which filters `hilog.info` and `LOG(INFO)` completely: the
+first device run captured 12.7k lines with not one `PaseoMaterial` line in them. ArkTS logs go
+through `hilog.warn(domain, tag, '%{public}s', message)` — the format string is what keeps the
+arguments out of the `<private>` mask — and the C++ line goes through `LOG(WARNING)`, which RNOH's
+`LogSink` (`LogSink.cpp`) turns into `OH_LOG_WARN`.
+
+`hdc hilog | grep PaseoMaterial` then shows:
 
 ```
-PaseoMaterial: view=PaseoMaterialLight scheme=light api=26 supported=true level=0 state=1
-PaseoMaterial: raw props thickness=regular materialColor=#8CFFFFFF lightColor=#80FFFFFF interactive=true applyShadow=true
-PaseoMaterial: typed props thickness=regular materialColor=#8CFFFFFF lightColor=#80FFFFFF
-PaseoMaterial: adopted style=regular tint=#8CFFFFFF(js|default=props) light=#80FFFFFF(js|default=props) degraded=#8CFFE7CC(js|default=props) interactive=true applyShadow=true blur=1 path=material
+PaseoMaterial: module loaded
+PaseoMaterial: registered PaseoMaterialLight / PaseoMaterialDark descriptors, view configs and prop binders
+PaseoMaterial: appear name=PaseoMaterialLight supported=true level=0 state=1 propsReceived=props+rawProps materialColor=#8CFFFFFF(from=props) style=regular blurStyle=Regular
+PaseoMaterial: systemMaterial applied=true
 ```
 
-The first line is the device: `view`/`scheme` is the component name that was built, `api=` its SDK
-version (the guard behind it, see above), `supported=`/`level=`/`state=` the material support,
-computing level and — `state=1` — that ArkUI read the metadata key from the section below. `level`
-and `state` read `-1` when the material APIs do not exist on the system.
+They answer the questions in the order they can fail:
 
-The next two lines are the two prop channels verbatim, and the last line is what was adopted: the
-`js|default=` fields name the channel each value came from (`props`, `rawProps`, or `default` for
-the built-in tint). `path=material` means the material was created and set; `path=degraded` means it
-was not, and only the blur and fill paint.
+| Line                      | Says                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `module loaded`           | The ArkTS module was evaluated at all — printed once per process, before anything is built.                                                                                                                                                                                                                                                                                                                                                                                                |
+| `registered …`            | The shared library registered the two component names, their view configs and the prop binder.                                                                                                                                                                                                                                                                                                                                                                                             |
+| `appear …`                | One per view instance, at `aboutToAppear`: `name` is the variant that was built, `supported`/`level`/`state` are material support, computing level and the resolved metadata `state` (`level`/`state` are `-1` when the material APIs do not exist on the system), `propsReceived` names the channels that carried anything (`props`, `rawProps`, `props+rawProps`, or `none`), and `materialColor` is the adopted tint with the channel it came from (`default` means the built-in tint). |
+| `systemMaterial applied=` | Whether an `ImmersiveMaterial` was created and set on the node. `false` means the material is absent or the device does not support it: only the blur and the fill paint.                                                                                                                                                                                                                                                                                                                  |
+
+A surface with no `appear` line at all was never built; one with `appear` and no following `applied`
+line has not finished its first descriptor read.
 
 ### The floating composer
 

@@ -7,6 +7,8 @@
 #include <react/renderer/componentregistry/ComponentDescriptorProvider.h>
 #include <react/renderer/core/ConcreteComponentDescriptor.h>
 
+#include <glog/logging.h>
+
 #include "RNOH/ArkJS.h"
 #include "RNOH/BaseComponentNapiBinder.h"
 #include "RNOHCorePackage/ComponentBinders/ViewComponentJSIBinder.h"
@@ -83,6 +85,12 @@ std::vector<facebook::react::ComponentDescriptorProvider> createComponentDescrip
 }
 
 ComponentJSIBinderByString createComponentJSIBinderByName() {
+  // WARN, not INFO: a device's default global log level is W, which filters INFO out entirely, and
+  // this line is what separates "the component was never registered" from "it was registered but
+  // never built". RNOH's LogSink turns LOG(WARNING) into OH_LOG_WARN (LogSink.cpp).
+  LOG(WARNING) << "PaseoMaterial: registered " << facebook::react::PaseoMaterialLightName << " / "
+               << facebook::react::PaseoMaterialDarkName
+               << " descriptors, view configs and prop binders";
   return {
       {facebook::react::PaseoMaterialLightName, std::make_shared<PaseoMaterialJSIBinder>()},
       {facebook::react::PaseoMaterialDarkName, std::make_shared<PaseoMaterialJSIBinder>()},

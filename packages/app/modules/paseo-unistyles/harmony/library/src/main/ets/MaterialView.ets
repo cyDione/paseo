@@ -56,6 +56,18 @@ const DEFAULT_LIGHT_EFFECT_LIGHT: string = '#80FFFFFF';
 const DEFAULT_LIGHT_EFFECT_DARK: string = '#40FFFFFF';
 const DEFAULT_THICKNESS: string = 'regular';
 
+/**
+ * Diagnostics are WARN, not INFO: a device's default global log level is `W`
+ * (`param get hilog.loggable.global`), which filters `hilog.info` and `LOG(INFO)` entirely — the
+ * first device run produced 12.7k log lines with no `PaseoMaterial` line in them. The `%{public}s`
+ * format string is what keeps the arguments out of the `<private>` mask.
+ */
+function logWarning(message: string): void {
+  hilog.warn(HILOG_DOMAIN, HILOG_TAG, '%{public}s', message);
+}
+
+logWarning('PaseoMaterial: module loaded');
+
 /** Raw props sent by `material-view.harmony.tsx`. Colors are `#AARRGGBB` strings. */
 export interface PaseoMaterialRawProps extends ViewRawProps {
   thickness?: string;
@@ -103,6 +115,44 @@ function resolveStringProp(typed: string | undefined, raw: string | undefined): 
     return { value: raw, source: 'rawProps' };
   }
   return { value: undefined, source: 'default' };
+}
+
+/**
+ * Which channels carried anything at all: `props` is the typed `descriptor.props` copy from the
+ * ComponentNapiBinder, `rawProps` the generic one. `none` means nothing arrived and every value
+ * below came from the built-in defaults.
+ */
+/** Which channel carried a boolean prop, or `default` when neither did. */
+function resolveBooleanPropSource(typed: boolean | undefined, raw: boolean | undefined): string {
+  if (typed !== undefined) {
+    return 'props';
+  }
+  if (raw !== undefined) {
+    return 'rawProps';
+  }
+  return 'default';
+}
+
+function summarizePropChannels(sources: string[]): string {
+  let fromTyped = false;
+  let fromRaw = false;
+  for (const source of sources) {
+    if (source === 'props') {
+      fromTyped = true;
+    } else if (source === 'rawProps') {
+      fromRaw = true;
+    }
+  }
+  if (fromTyped && fromRaw) {
+    return 'props+rawProps';
+  }
+  if (fromTyped) {
+    return 'props';
+  }
+  if (fromRaw) {
+    return 'rawProps';
+  }
+  return 'none';
 }
 
 function defaultTint(scheme: PaseoMaterialScheme): string {
@@ -248,69 +298,36 @@ class PaseoMaterialAttributeModifier implements AttributeModifier<StackAttribute
   }
 }
 
-/** Everything the log lines need: what arrived, what it was taken from, what was adopted. */
-interface MaterialLogInput {
+/**
+ * One summary line per view instance, plus the material's own verdict. Both are printed while the
+ * component appears (the first descriptor read happens in `aboutToAppear`) and never per descriptor
+ * update: two WARN lines per surface are enough to answer "did the component exist, did the props
+ * arrive, was the material applied" on a device whose log level filters everything below W.
+ */
+/** What the summary line reports; see docs/harmony.md for how to read it. */
+interface MaterialAppearSummary {
   viewName: string;
   scheme: PaseoMaterialScheme;
-  rawProps: PaseoMaterialRawProps;
-  typedProps: PaseoMaterialTypedProps;
   thickness: string;
-  tint: MaterialPropValue;
-  degraded: MaterialPropValue;
-  light: MaterialPropValue;
-  interactive: boolean;
-  applyShadow: boolean;
-  path: string;
+  tintColor: string;
+  tintSource: string;
+  channels: string;
   blurStyle: BlurStyle;
 }
 
-/** One line per material configuration; see docs/harmony.md for how to read them. */
-function logMaterial(input: MaterialLogInput): void {
-  hilog.info(
-    HILOG_DOMAIN,
-    HILOG_TAG,
-    'PaseoMaterial: view=%{public}s scheme=%{public}s api=%{public}d supported=%{public}s level=%{public}d state=%{public}d',
-    input.viewName,
-    input.scheme,
-    deviceInfo.sdkApiVersion,
-    isMaterialApiAvailable() && uiMaterial.isImmersiveMaterialSupported(),
-    isMaterialApiAvailable() ? uiMaterial.getGlobalMaterialLevel() : UNAVAILABLE_METRIC,
-    isMaterialApiAvailable() ? uiMaterial.getMaterialInfo().state : UNAVAILABLE_METRIC,
+function logAppearSummary(input: MaterialAppearSummary): void {
+  const supported: boolean = isMaterialApiAvailable() && uiMaterial.isImmersiveMaterialSupported();
+  const level: number = isMaterialApiAvailable() ? uiMaterial.getGlobalMaterialLevel() : UNAVAILABLE_METRIC;
+  const state: number = isMaterialApiAvailable() ? uiMaterial.getMaterialInfo().state : UNAVAILABLE_METRIC;
+  logWarning(
+    `PaseoMaterial: appear name=${input.viewName} supported=${supported} level=${level} state=${state}` +
+      ` propsReceived=${input.channels} materialColor=${input.tintColor}(from=${input.tintSource})` +
+      ` style=${input.thickness} blurStyle=${input.blurStyle}`,
   );
-  hilog.info(
-    HILOG_DOMAIN,
-    HILOG_TAG,
-    'PaseoMaterial: raw props thickness=%{public}s materialColor=%{public}s lightColor=%{public}s interactive=%{public}s applyShadow=%{public}s',
-    input.rawProps.thickness ?? '',
-    input.rawProps.materialColor ?? '',
-    input.rawProps.lightColor ?? '',
-    input.rawProps.interactive ?? false,
-    input.rawProps.applyShadow ?? false,
-  );
-  hilog.info(
-    HILOG_DOMAIN,
-    HILOG_TAG,
-    'PaseoMaterial: typed props thickness=%{public}s materialColor=%{public}s lightColor=%{public}s',
-    input.typedProps.thickness ?? '',
-    input.typedProps.materialColor ?? '',
-    input.typedProps.lightColor ?? '',
-  );
-  hilog.info(
-    HILOG_DOMAIN,
-    HILOG_TAG,
-    'PaseoMaterial: adopted style=%{public}s tint=%{public}s(js|default=%{public}s) light=%{public}s(js|default=%{public}s) degraded=%{public}s(js|default=%{public}s) interactive=%{public}s applyShadow=%{public}s blur=%{public}d path=%{public}s',
-    input.thickness,
-    input.tint.value ?? defaultTint(input.scheme),
-    input.tint.source,
-    input.light.value ?? defaultLightEffect(input.scheme),
-    input.light.source,
-    input.degraded.value ?? defaultDegradedTint(input.scheme),
-    input.degraded.source,
-    input.interactive,
-    input.applyShadow,
-    input.blurStyle,
-    input.path,
-  );
+}
+
+function logMaterialApplied(applied: boolean): void {
+  logWarning(`PaseoMaterial: systemMaterial applied=${applied}`);
 }
 
 @Builder
@@ -344,7 +361,8 @@ export struct PaseoMaterialView {
   public defaultScheme: PaseoMaterialScheme = 'light';
   @State private modifier: PaseoMaterialAttributeModifier | undefined = undefined;
   private cleanUpCallbacks: (() => void)[] = [];
-  private materialKey: string = '';
+  private summaryLogged: boolean = false;
+  private loggedMaterialApplied: boolean | undefined = undefined;
 
   aboutToAppear(): void {
     this.onDescriptorChange(this.ctx.descriptorRegistry.getDescriptor<PaseoMaterialDescriptor>(this.tag));
@@ -379,28 +397,33 @@ export struct PaseoMaterialView {
     const fillColor: string = material !== undefined
       ? tintColor
       : (degraded.value ?? defaultDegradedTint(this.defaultScheme));
-    const key = `${tintColor}|${lightColor}|${fillColor}|${thickness}|${interactive}|${applyShadow}`;
     this.modifier = new PaseoMaterialAttributeModifier(descriptor, material, fillColor, blurStyle);
-    if (key === this.materialKey) {
-      return;
+    const materialApplied: boolean = material !== undefined;
+    if (!this.summaryLogged) {
+      this.summaryLogged = true;
+      logAppearSummary({
+        viewName: this.defaultScheme === 'dark'
+          ? PaseoMaterialView.DARK_NAME
+          : PaseoMaterialView.LIGHT_NAME,
+        scheme: this.defaultScheme,
+        thickness: thickness,
+        tintColor: tintColor,
+        tintSource: tint.source,
+        channels: summarizePropChannels([
+          thicknessProp.source,
+          tint.source,
+          degraded.source,
+          light.source,
+          resolveBooleanPropSource(typedProps.interactive, rawProps.interactive),
+          resolveBooleanPropSource(typedProps.applyShadow, rawProps.applyShadow),
+        ]),
+        blurStyle: blurStyle,
+      });
     }
-    this.materialKey = key;
-    logMaterial({
-      viewName: this.defaultScheme === 'dark'
-        ? PaseoMaterialView.DARK_NAME
-        : PaseoMaterialView.LIGHT_NAME,
-      scheme: this.defaultScheme,
-      rawProps: rawProps,
-      typedProps: typedProps,
-      thickness: thickness,
-      tint: tint,
-      degraded: degraded,
-      light: light,
-      interactive: interactive,
-      applyShadow: applyShadow,
-      path: material === undefined ? 'degraded' : 'material',
-      blurStyle: blurStyle,
-    });
+    if (materialApplied !== this.loggedMaterialApplied) {
+      this.loggedMaterialApplied = materialApplied;
+      logMaterialApplied(materialApplied);
+    }
   }
 
   build() {
