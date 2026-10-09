@@ -66,12 +66,14 @@ class PaseoMaterialNapiBinder : public BaseComponentNapiBinder {
 };
 
 template <typename ShadowNodeT>
-class PaseoMaterialComponentDescriptor final
-    : public facebook::react::ConcreteComponentDescriptor<ShadowNodeT> {
+using PaseoMaterialDescriptorBase = facebook::react::ConcreteComponentDescriptor<ShadowNodeT>;
+
+template <typename ShadowNodeT>
+class PaseoMaterialComponentDescriptor final : public PaseoMaterialDescriptorBase<ShadowNodeT> {
  public:
   explicit PaseoMaterialComponentDescriptor(
       const facebook::react::ComponentDescriptorParameters &parameters)
-      : ConcreteComponentDescriptor<ShadowNodeT>(parameters) {}
+      : PaseoMaterialDescriptorBase<ShadowNodeT>(parameters) {}
 };
 
 } // namespace
