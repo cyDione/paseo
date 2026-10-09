@@ -1,5 +1,11 @@
 import { Component, type ComponentType, type ReactElement, type ReactNode } from "react";
-import { type HostComponent, type ViewProps, type ViewStyle } from "react-native";
+import {
+  View,
+  type HostComponent,
+  type StyleProp,
+  type ViewProps,
+  type ViewStyle,
+} from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 // The same entry point `@react-native-oh-tpl/masked-view` uses; no codegen step runs for an
 // app component, so the runtime registration path is the only one available.
@@ -10,6 +16,21 @@ import type { GlassLayerProps, GlassThickness, GlassTone } from "./glass-layer.t
 
 /** Glass is real on HarmonyOS only; see the base module for the non-Harmony contract. */
 export const GLASS_LAYER_ENABLED: boolean = true;
+
+/**
+ * Diagnostic-only, and deliberately not exported: it answers "which path did this surface take"
+ * from the device instead of from a log. Red = the native view never registered or threw while
+ * rendering, so no glass layer exists at all; orange (native side, `kDiagnosticTintOnDegrade`) =
+ * the material degraded to the tinted backdrop blur; no tint = the system material applied. Set
+ * to `false` with the native constant once the material is verified on a device.
+ */
+const GLASS_DIAGNOSTIC_TINTS: boolean = true;
+
+/**
+ * Not a theme color: the diagnostic must never be mistaken for a Paseo surface. It paints the
+ * area the missing layer would have covered, which is otherwise the surface's own fill.
+ */
+const DIAGNOSTIC_MISSING_VIEW_TINT: ViewStyle = { backgroundColor: "rgba(255, 0, 0, 0.25)" };
 
 /**
  * The material props the native `PaseoGlass*` views read. They are hand-registered in
@@ -81,9 +102,13 @@ interface GlassErrorBoundaryState {
 
 /**
  * The native view registers its view config lazily, so a missing registration throws while
- * React renders the child. Glass is decoration: swallow the error and render nothing.
+ * React renders the child. Glass is decoration: swallow the error and paint the diagnostic fill
+ * (nothing when the tints are off) instead of failing the surface.
  */
-class GlassErrorBoundary extends Component<{ children: ReactNode }, GlassErrorBoundaryState> {
+class GlassErrorBoundary extends Component<
+  { children: ReactNode; diagnosticFillStyle: StyleProp<ViewStyle> | null },
+  GlassErrorBoundaryState
+> {
   state: GlassErrorBoundaryState = { failed: false };
 
   static getDerivedStateFromError(): GlassErrorBoundaryState {
@@ -91,7 +116,12 @@ class GlassErrorBoundary extends Component<{ children: ReactNode }, GlassErrorBo
   }
 
   render(): ReactNode {
-    return this.state.failed ? null : this.props.children;
+    if (!this.state.failed) {
+      return this.props.children;
+    }
+    return this.props.diagnosticFillStyle === null ? null : (
+      <View pointerEvents="none" style={this.props.diagnosticFillStyle} />
+    );
   }
 }
 
@@ -108,11 +138,16 @@ export function GlassLayer({
   style,
 }: GlassLayerProps): ReactElement | null {
   const ThemedGlass = resolveThemedGlassComponent(thickness, tone, light);
+  const diagnosticFillStyle: StyleProp<ViewStyle> | null = GLASS_DIAGNOSTIC_TINTS
+    ? [LAYER_STYLE, style, DIAGNOSTIC_MISSING_VIEW_TINT]
+    : null;
   if (ThemedGlass === null) {
-    return null;
+    return diagnosticFillStyle === null ? null : (
+      <View pointerEvents="none" style={diagnosticFillStyle} />
+    );
   }
   return (
-    <GlassErrorBoundary>
+    <GlassErrorBoundary diagnosticFillStyle={diagnosticFillStyle}>
       <ThemedGlass
         pointerEvents="none"
         applyShadow

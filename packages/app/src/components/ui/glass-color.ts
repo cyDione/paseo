@@ -38,6 +38,20 @@ export function hexToArgbWithAlpha(hex: string, alpha: number): number | null {
 }
 
 /**
+ * Theme hex token (`#rgb` or `#rrggbb`) as the `rgba()` string a React Native style accepts. This
+ * is the sibling of {@link hexToArgbWithAlpha} for the surfaces that carry their own fill instead
+ * of handing the material a color; it returns `null` for the same tokens, where the caller keeps
+ * the original color rather than inventing one.
+ */
+export function hexToRgbaString(hex: string, alpha: number): string | null {
+  const rgb = parseHexColor(hex);
+  if (!rgb) return null;
+  const [r, g, b] = rgb.map((channel) => Math.round(channel * 255));
+  const clamped = Math.min(1, Math.max(0, alpha));
+  return `rgba(${r}, ${g}, ${b}, ${clamped})`;
+}
+
+/**
  * The signed 32-bit form the bridge carries. React Native casts raw props to `int`, so the
  * 0xAARRGGBB bits travel as a negative number on every dark or half-opaque color; keeping the
  * conversion here means the native side only has to cast back to `uint32_t`.

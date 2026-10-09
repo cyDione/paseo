@@ -61,7 +61,7 @@ import {
 import { FloatingSurface } from "@/components/ui/floating";
 import { GlassLayer } from "@/components/ui/glass-layer";
 import { BORDER_RADIUS } from "@/styles/theme";
-import { platformChromeGlassFill, platformChromeStyles } from "@/styles/platform-chrome";
+import { platformChromeGlassFillColor, platformChromeStyles } from "@/styles/platform-chrome";
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 import {
   getOverlayRoot,
@@ -174,11 +174,12 @@ function ComboboxSheetBackground({ style }: BottomSheetBackgroundProps) {
     () => [
       style,
       {
-        backgroundColor: theme.colors.surface0,
+        // Translucent fill under the GlassLayer, so a material that does not paint leaves a
+        // readable sheet rather than a transparent one. Identity off Harmony.
+        backgroundColor: platformChromeGlassFillColor(theme.colors.surface0),
         borderTopLeftRadius: theme.borderRadius["2xl"],
         borderTopRightRadius: theme.borderRadius["2xl"],
       },
-      platformChromeGlassFill,
     ],
     [style, theme.colors.surface0, theme.borderRadius],
   );
@@ -1210,7 +1211,7 @@ function DesktopComboboxBody(props: DesktopBodyProps): ReactElement {
           testID="combobox-desktop-container"
           entering={props.shouldUseDesktopFade ? FadeIn.duration(100) : undefined}
           exiting={props.shouldUseDesktopFade ? FadeOut.duration(100) : undefined}
-          style={[styles.desktopContainer, platformChromeStyles.menuPanel]}
+          style={[styles.desktopContainer, platformChromeStyles.comboboxPanel]}
           frameStyle={props.desktopFrameStyle}
           ref={setFloatingRef}
           collapsable={false}

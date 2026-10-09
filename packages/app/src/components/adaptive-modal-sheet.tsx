@@ -35,7 +35,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AdaptiveTextInput } from "@/components/adaptive-text-input";
 import { GlassLayer } from "@/components/ui/glass-layer";
 import { BORDER_RADIUS } from "@/styles/theme";
-import { platformChromeGlassFill, platformChromeStyles } from "@/styles/platform-chrome";
+import { platformChromeGlassFillColor, platformChromeStyles } from "@/styles/platform-chrome";
 export { AdaptiveTextInput, type AdaptiveTextInputProps } from "@/components/adaptive-text-input";
 
 // Horizontal indent token shared by the sheet header (title, back arrow,
@@ -249,11 +249,12 @@ function SheetBackground({ style }: BottomSheetBackgroundProps) {
     () => [
       style,
       {
-        backgroundColor: theme.colors.surface0,
+        // The sheet keeps a translucent fill under the GlassLayer; a material that does not
+        // paint must not leave a transparent sheet over live content. Identity off Harmony.
+        backgroundColor: platformChromeGlassFillColor(theme.colors.surface0),
         borderTopLeftRadius: theme.borderRadius["2xl"],
         borderTopRightRadius: theme.borderRadius["2xl"],
       },
-      platformChromeGlassFill,
     ],
     [style, theme.colors.surface0, theme.borderRadius],
   );

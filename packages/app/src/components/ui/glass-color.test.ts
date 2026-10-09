@@ -5,6 +5,7 @@ import {
   glassLightEffectColor,
   glassMaterialColor,
   hexToArgbWithAlpha,
+  hexToRgbaString,
   toSignedArgbInt,
 } from "./glass-color";
 
@@ -31,6 +32,23 @@ describe("hexToArgbWithAlpha", () => {
   it("returns null for tokens that are not hex colors", () => {
     expect(hexToArgbWithAlpha("rgba(0, 0, 0, 0.5)", 0.5)).toBeNull();
     expect(hexToArgbWithAlpha("transparent", 0.5)).toBeNull();
+  });
+});
+
+describe("hexToRgbaString", () => {
+  it("writes the theme token as an rgba string with the requested alpha", () => {
+    expect(hexToRgbaString("#181b1a", 0.78)).toBe("rgba(24, 27, 26, 0.78)");
+    expect(hexToRgbaString("#f80", 0.5)).toBe("rgba(255, 136, 0, 0.5)");
+  });
+
+  it("clamps alpha and keeps zero alpha", () => {
+    expect(hexToRgbaString("#ffffff", 2)).toBe("rgba(255, 255, 255, 1)");
+    expect(hexToRgbaString("#ffffff", -1)).toBe("rgba(255, 255, 255, 0)");
+  });
+
+  it("returns null for tokens that are not hex colors", () => {
+    expect(hexToRgbaString("rgba(0, 0, 0, 0.5)", 0.5)).toBeNull();
+    expect(hexToRgbaString("transparent", 0.5)).toBeNull();
   });
 });
 

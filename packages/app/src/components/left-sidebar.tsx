@@ -52,7 +52,7 @@ import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import { GlassLayer } from "@/components/ui/glass-layer";
-import { platformChromeGlassFill } from "@/styles/platform-chrome";
+import { platformChromeGlassFillColor } from "@/styles/platform-chrome";
 import { buildSettingsAddHostRoute, buildSettingsRoute } from "@/utils/host-routes";
 import { openHostOverview } from "@/navigation/settings-navigation";
 import {
@@ -549,9 +549,9 @@ function MobileSidebar({
     () => ({
       paddingTop: insetsTop,
       paddingBottom: insetsBottom,
-      backgroundColor: theme.colors.surfaceSidebar,
-      // Harmony hands the fill to the GlassLayer below; empty elsewhere.
-      ...platformChromeGlassFill,
+      // The drawer keeps its token as a semi-transparent fill under the GlassLayer, so a material
+      // that does not paint still leaves a readable frosted drawer. Identity off Harmony.
+      backgroundColor: platformChromeGlassFillColor(theme.colors.surfaceSidebar),
     }),
     [insetsTop, insetsBottom, theme.colors.surfaceSidebar],
   );

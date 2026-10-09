@@ -1,5 +1,4 @@
 import { StyleSheet } from "react-native-unistyles";
-import type { ViewStyle } from "react-native";
 
 /**
  * Platform chrome overrides. Metro resolves `platform-chrome.harmony.ts` on HarmonyOS and this
@@ -10,8 +9,16 @@ export const platformChromeStyles = StyleSheet.create({
   headerButton: {},
   composerCard: {},
   menuPanel: {},
+  comboboxPanel: {},
   modalCard: {},
 });
 
-/** Plain-style companion for surfaces that must not carry a Unistyles style. */
-export const platformChromeGlassFill: ViewStyle = {};
+/**
+ * The fill a surface keeps under its glass layer, so a material that does not paint leaves a
+ * readable surface instead of a hole. Identity here; HarmonyOS returns the same token at
+ * `GLASS_FALLBACK_FILL_ALPHA` (platform-chrome.harmony.ts). Callers pass the surface's own theme
+ * token, never one of the glass alphas.
+ */
+export function platformChromeGlassFillColor(color: string): string {
+  return color;
+}
