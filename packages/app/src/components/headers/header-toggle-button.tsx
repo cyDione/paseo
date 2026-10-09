@@ -3,13 +3,19 @@ import { Text, View, type PressableProps, type StyleProp, type ViewStyle } from 
 import { StyleSheet } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
+import { GlassLayer } from "@/components/ui/glass-layer";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { isWeb } from "@/constants/platform";
 import { platformChromeStyles } from "@/styles/platform-chrome";
+import { BORDER_RADIUS } from "@/styles/theme";
 import {
   iconButtonChromeFrameStyle,
   iconButtonChromeStyle,
 } from "@/components/ui/icon-button-chrome";
+
+// The Harmony button is a circle (platformChromeStyles.headerButton); the glass layer
+// underneath has to clip to the same shape.
+const GLASS_LAYER_STYLE = { borderRadius: BORDER_RADIUS.full };
 
 interface HeaderToggleButtonState {
   hovered: boolean;
@@ -68,10 +74,14 @@ export function HeaderToggleButton({
         onPress={onPress}
         style={combinedStyle}
       >
-        {typeof children === "function"
-          ? (state: { pressed: boolean; hovered?: boolean }) =>
-              children({ hovered: Boolean(state.hovered), pressed: state.pressed })
-          : children}
+        {(state: { pressed: boolean; hovered?: boolean }) => (
+          <>
+            <GlassLayer thickness="regular" style={GLASS_LAYER_STYLE} />
+            {typeof children === "function"
+              ? children({ hovered: Boolean(state.hovered), pressed: state.pressed })
+              : children}
+          </>
+        )}
       </TooltipTrigger>
       <TooltipContent testID={tooltipTestID} side={tooltipSide} align="center" offset={8}>
         <View style={styles.tooltipRow}>

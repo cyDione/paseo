@@ -20,7 +20,7 @@ import {
 } from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { BORDER_RADIUS, ICON_SIZE, type Theme } from "@/styles/theme";
 import { platformChromeStyles } from "@/styles/platform-chrome";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import { useDictation } from "@/hooks/use-dictation";
@@ -40,6 +40,7 @@ import type { ImageAttachment, MessagePayload, TextReplacement } from "@/compose
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
+import { GlassLayer } from "@/components/ui/glass-layer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,6 +87,9 @@ import {
 
 const DEFAULT_SEND_KEYS: ShortcutKey[][] = [["Enter"]];
 const COMPOSER_INPUT_DATASET = { composerInput: "" } as const;
+
+// Matches the composer card radius (styles.inputWrapper); the glass layer clips to it.
+const COMPOSER_GLASS_STYLE = { borderRadius: BORDER_RADIUS["2xl"] };
 
 export interface AttachmentMenuItem {
   id: string;
@@ -1800,6 +1804,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           style={inputWrapperCombinedStyle}
           pointerEvents={surfacePresentation.input.pointerEvents}
         >
+          <GlassLayer thickness="regular" style={COMPOSER_GLASS_STYLE} />
           {attachmentSlot}
           {/* Text input */}
           <RenderProfile id="ComposerTextSurface">
