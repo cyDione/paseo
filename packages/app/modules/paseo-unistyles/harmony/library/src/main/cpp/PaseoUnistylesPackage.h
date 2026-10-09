@@ -1,6 +1,7 @@
 #pragma once
 #include "RNOH/Package.h"
 #include "RNOH/ArkTSTurboModule.h"
+#include "glass/GlassRegistration.h"
 
 namespace rnoh {
 class HarmonyPlatform;
@@ -25,6 +26,23 @@ public:
   explicit PaseoUnistylesPackage(Package::Context ctx) : Package(ctx) {}
   std::unique_ptr<TurboModuleFactoryDelegate> createTurboModuleFactoryDelegate() override {
     return std::make_unique<PaseoUnistylesFactory>();
+  }
+
+  // Glass views ride along in this module; see GlassRegistration.h.
+  ComponentInstanceFactoryDelegate::Shared createComponentInstanceFactoryDelegate() override {
+    return paseo_glass::createComponentInstanceFactoryDelegate();
+  }
+
+  std::vector<facebook::react::ComponentDescriptorProvider> createComponentDescriptorProviders() override {
+    return paseo_glass::createComponentDescriptorProviders();
+  }
+
+  ComponentJSIBinderByString createComponentJSIBinderByName() override {
+    return paseo_glass::createComponentJSIBinderByName();
+  }
+
+  ComponentNapiBinderByString createComponentNapiBinderByName() override {
+    return paseo_glass::createComponentNapiBinderByName();
   }
 };
 }
