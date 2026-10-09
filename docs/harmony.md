@@ -174,6 +174,124 @@ effective color scheme from the contributed theme or the theme preference, with
 `auto` following the system scheme, and calls `StatusBar.setBarStyle`. It re-runs
 when the system scheme changes.
 
+## System material (ArkUI)
+
+The composer card and the pills above it are immersive system materials on HarmonyOS. The material
+is a component attribute (`.systemMaterial()`), so this is ArkTS: `PaseoMaterialView` in the
+`paseo-unistyles` HAR wraps the RN children of a surface in a `Stack` that carries the material.
+JS reaches it through `MaterialView`
+(`packages/app/src/components/ui/material-view.harmony.tsx`), a plain `View` on every other
+platform, so call sites stay unconditional. Decorative use only: the components, the transcript and
+the material rules below are the whole contract.
+
+### The material contains its content
+
+`ImmersiveOptions.colorInvert` adapts text and icon colors across the material node's _subtree_,
+so the RN children sit inside that node — that is what the `ContentSlot` in the middle of the
+Stack is for. A material painted on a sibling behind the content can never do that.
+
+The container is the RN node's own box: the C++ mounting manager positions the ArkTS component
+through the layout rect it sets on the component's frame node. This component therefore does not
+use `RNViewBase` — that struct re-applies `layoutMetrics.frame.origin` as a `position()`, which
+would offset any node whose origin is not (0, 0). It applies the corner radius (which is what clips
+the material), the border, the border style and the opacity from the descriptor instead.
+
+### The tint must stay translucent
+
+`materialColor` defaults to `Color.Transparent`, and a fully opaque color blocks the material
+filter — the surface then reads as a flat fill, which is what an unset or opaque tint looked like
+in the first attempts. `components/ui/material-color.ts` produces the tint as `#AARRGGBB`:
+`surface0` at 55% on light themes, `surface1` at 55% on dark, accent at 25%; the light-effect color
+is white at 50% (light) and 25% (dark). All four are feel values, not derived from a token.
+
+The RN side must stay transparent for the same reason. `platformChromeMaterialFill`
+(`styles/platform-chrome.harmony.ts`) is `transparent` on HarmonyOS and `null` elsewhere, which
+`composer/pill-styles.ts` and any other material surface reads inside its `StyleSheet.create`; the
+composer card's own entry (`platformChromeStyles.composerCard`) does the same. The card's shadow
+comes from the material (`applyShadow`), not from the theme's `shadow.md`.
+
+### Registration
+
+| Piece                   | Where                                                                                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RN props contract       | `components/ui/material-view.types.ts`, mirrored by `PaseoMaterialRawProps` in `MaterialView.ets`                                                       |
+| ArkTS component         | `harmony/library/src/main/ets/MaterialView.ets`, registered by `PaseoUnistylesPackage.ets` in `createWrappedCustomRNComponentBuilderByComponentNameMap` |
+| Descriptor, view config | `harmony/library/src/main/cpp/material/`, built into the existing `paseo_unistyles` target                                                              |
+
+The C++ side registers a component descriptor and a `ComponentJSIBinder` — without the binder the JS
+view config drops the material props before they reach the device — and deliberately no component
+instance: a C++ instance would move the component onto the C-API mounting path, where the ArkTS
+component is never built. Custom props are read from `descriptor.rawProps`; no codegen and no
+`ComponentNapiBinder` are involved.
+
+### Application-level switch
+
+The entry module's `module.json5` metadata carries
+`{ "name": "ohos.arkui.UIMaterial.state", "value": "enable" }`. `packages/app/harmony` is generated
+by prebuild, so the key comes from the local config plugin
+`packages/app/plugins/with-harmony-system-material.js` (through `withModuleJson`), not from a file
+in the checkout. The key name comes from Huawei's "开启沉浸光感" documentation and is not present in
+the SDK declarations; `uiMaterial.getMaterialInfo().state` — the `state=` field of the log line
+below — is how you confirm the system read it.
+
+### Degradation and diagnostics
+
+`uiMaterial.isImmersiveMaterialSupported()` gates the material per component. When it is false the
+view falls back to `BlurStyle.Thin` plus a translucent fill, which is a tinted backdrop blur rather
+than a system material. `getGlobalMaterialLevel()` reports how much the device can do at all, and
+the material has different effects per level: at `SMOOTH` it drives the node's background, border
+and shadow; at `EXQUISITE` and `GENTLE` it adds the filter, light and shadow over them.
+
+Two tints are on by default and are meant to be turned off (or deleted with their constants) once
+the material is verified on a device:
+
+| Signal                                        | Meaning                                                                                     | Where                                                      |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Red translucent fill, `rgba(255, 0, 0, 0.25)` | The native view never registered or threw while rendering, so the surface is a plain `View` | `MATERIAL_DIAGNOSTIC_TINTS` in `material-view.harmony.tsx` |
+| Orange cast mixed into the fill               | The material degraded to the backdrop-blur path                                             | `materialDegradedFillColor` in `material-color.ts`         |
+| No tint                                       | The system material applied                                                                 | —                                                          |
+
+`hdc hilog | grep PaseoMaterial` prints one line per material change:
+
+```
+PaseoMaterial: supported=true level=0 state=1 style=regular path=material
+PaseoMaterial: supported=false level=2 state=1 style=thin path=degraded
+```
+
+`path=material` means the material was created and set; `path=degraded` means the device has no
+immersive material. `state=` is what ArkUI resolved from the metadata above.
+
+### The floating composer
+
+The composer floats over the transcript on HarmonyOS so the material has content to blur: the
+transcript runs to the bottom of the pane and passes under the card, and the card's own box is the
+only thing above it. `packages/app/src/composer/dock/overlay-layout.ts` /
+`overlay-layout.harmony.ts` decide whether the platform can do this, and `ComposerDock`'s
+`overlayContent` prop decides which panes ask for it. Only the agent chat pane does: the draft and
+new-workspace docks put a setup form under the composer, and a floating composer would leave that
+form's bottom under a card.
+
+The dock measures the floating composer and publishes the height through
+`ComposerOverlayHeightContext`; `agent-panel.tsx` adds it to the transcript's tail and
+scroll-control clearance (`resolveComposerOverlayInset`, `composer/dock/internal/overlay-clearance.ts`)
+and the pill strip takes it as its own `bottom`, so the pills stay directly on the card. The
+composer keeps its place inside `KeyboardTranslateView`: the whole surface moves with the keyboard,
+and `ComposerViewportContent`'s capacity bound still limits how tall the card may grow.
+
+## HarmonyOS 7 (API 26) UI capability cheat sheet
+
+Everything below exists in the CLI SDK under `~/deveco/command-line-tools/sdk/default` (OpenHarmony
+plus HMS). "Used" is what this repository actually depends on.
+
+| Capability              | Declaration                                                                                                                                                                                                                                  | Where                                            | Used                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Basic components        | `openharmony/ets/component/*.d.ts` (121 files: `stack.d.ts`, `column.d.ts`, `content_slot.d.ts`, `custom_dialog_controller.d.ts`, …)                                                                                                         | universal attributes and events in `common.d.ts` | `Stack`, `Column`, `ContentSlot`, `.systemMaterial()`, `.backgroundBlurStyle()` |
+| Advanced components     | `openharmony/ets/api/@ohos.arkui.advanced.*.d.ets` (`Chip`, `SegmentButton`, `Dialog`, `SubHeader`, `ToolBar`, …)                                                                                                                            | `@kit.ArkUI`                                     | not used                                                                        |
+| System material         | `openharmony/ets/api/@ohos.arkui.uiMaterial.d.ts` (`ImmersiveMaterial`, `ImmersiveStyle`, `MaterialState`, `MaterialLevel`, `getMaterialInfo`, `isImmersiveMaterialSupported`), attribute `.systemMaterial(material)`                        | `common.d.ts:22642`; kit `@kit.ArkUI`            | yes — composer card and pills                                                   |
+| HDS navigation and bars | `hms/ets/api/@hms.hds.{HdsNavigation,HdsNavDestination,HdsTabs,HdsActionBar,HdsSnackBar,HdsSideBar,HdsSideMenu,HdsListItemCard}`                                                                                                             | `@kit.UIDesignKit`                               | not used                                                                        |
+| HDS visual effects      | `hms/ets/api/@hms.hds.HdsVisualComponent.d.ets` (`HdsSceneType.DUAL_EDGE_FLOW_LIGHT_WITH_BACKGROUND_MASK`), `@hms.hds.hdsBaseComponent.d.ets` (`hdsEffect`: `EdgeFlowLightParam`, `PointLightEffect`, `PressShadowType`, `HdsEffectBuilder`) | `@kit.UIDesignKit`                               | not used                                                                        |
+| HDS material            | `hms/ets/api/@hms.hds.hdsMaterial.d.ets` (`hdsMaterial`)                                                                                                                                                                                     | `@kit.UIDesignKit`                               | not used                                                                        |
+
 ## Foldable and split-window behavior
 
 Follow Huawei's [cross-device application development rules](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-cross-device-app-dev).
