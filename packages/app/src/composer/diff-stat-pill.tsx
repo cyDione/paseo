@@ -3,6 +3,7 @@ import { Pressable } from "react-native";
 import { useTranslation } from "react-i18next";
 import { DiffStat } from "@/components/diff-stat";
 import { composerPillStyles } from "@/composer/pill-styles";
+import { MaterialView } from "@/components/ui/material-view";
 import { useVisibleWorkspaceDiffStat } from "@/composer/workspace-diff-stat";
 
 interface ComposerDiffStatPillProps {
@@ -22,17 +23,19 @@ export function ComposerDiffStatPill({ additions, deletions, onPress }: Composer
   );
 
   return (
-    <Pressable
-      testID="composer-diff-stat-pill"
-      accessibilityRole="button"
-      accessibilityLabel={t("workspace.git.diff.openChangesTab")}
-      onPress={onPress}
-      onHoverIn={handleHoverIn}
-      onHoverOut={handleHoverOut}
-      style={bodyStyle}
-    >
-      <DiffStat additions={additions} deletions={deletions} />
-    </Pressable>
+    <MaterialView thickness="thin" interactive>
+      <Pressable
+        testID="composer-diff-stat-pill"
+        accessibilityRole="button"
+        accessibilityLabel={t("workspace.git.diff.openChangesTab")}
+        onPress={onPress}
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
+        style={bodyStyle}
+      >
+        <DiffStat additions={additions} deletions={deletions} />
+      </Pressable>
+    </MaterialView>
   );
 }
 

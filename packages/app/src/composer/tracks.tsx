@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { MaterialView } from "@/components/ui/material-view";
 import { resolveComposerOverlayInset } from "@/composer/dock/internal/overlay-clearance";
 import { useComposerOverlayHeight } from "@/composer/dock/overlay-layout";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
@@ -149,29 +150,33 @@ function ComposerTrackPillTrigger({
   );
 
   return (
-    <MenuTrigger
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={accessibilityState}
-      {...ariaExpandedProps}
-      style={pillStyle}
-    >
-      <View style={styles.segments}>
-        {segments.map((segment, index) => (
-          <View
-            key={segment.bucket ?? "plain"}
-            style={styles.segment}
-            testID={`${testID}-segment-${index}`}
-          >
-            <ComposerTrackMark bucket={segment.bucket} />
-            <Text style={labelStyle} numberOfLines={1}>
-              {segment.text}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </MenuTrigger>
+    // The pill is a material surface on HarmonyOS; the trigger keeps its own geometry and press
+    // handling, and the material clips to the same radius.
+    <MaterialView thickness="thin" interactive>
+      <MenuTrigger
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={accessibilityState}
+        {...ariaExpandedProps}
+        style={pillStyle}
+      >
+        <View style={styles.segments}>
+          {segments.map((segment, index) => (
+            <View
+              key={segment.bucket ?? "plain"}
+              style={styles.segment}
+              testID={`${testID}-segment-${index}`}
+            >
+              <ComposerTrackMark bucket={segment.bucket} />
+              <Text style={labelStyle} numberOfLines={1}>
+                {segment.text}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </MenuTrigger>
+    </MaterialView>
   );
 }
 

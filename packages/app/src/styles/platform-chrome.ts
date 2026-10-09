@@ -9,3 +9,10 @@ export const platformChromeStyles = StyleSheet.create({
   headerButton: {},
   composerCard: {},
 });
+
+/**
+ * Background for a surface the system material paints: `null` keeps the surface's own token,
+ * which is what every platform without a material wants (docs/harmony.md). A token rather than a
+ * function because theme colors are only legible inside `StyleSheet.create` (docs/unistyles.md).
+ */
+export const platformChromeMaterialFill: string | null = null;

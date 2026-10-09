@@ -10,9 +10,16 @@ export const platformChromeStyles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     ...theme.shadow.md,
   },
-  // Shadow only. The card's 16px radius is the tangent point the pills above it align
-  // to (composer/pill-styles.ts), and the border stays as the resting edge.
+  // The immersive material owns the shadow (ImmersiveOptions.applyShadow) and needs a
+  // transparent background to be visible at all; the card's 16px radius stays the tangent point
+  // the pills above it align to (composer/pill-styles.ts).
   composerCard: {
-    ...theme.shadow.md,
+    backgroundColor: "transparent",
   },
 }));
+
+/**
+ * The system material owns the fill of the surfaces it sits behind, and an opaque RN background
+ * would cover it: the material filter is what makes the surface translucent, so it *is* the fill.
+ */
+export const platformChromeMaterialFill: string | null = "transparent";

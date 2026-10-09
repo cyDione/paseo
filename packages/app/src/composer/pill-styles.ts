@@ -1,4 +1,5 @@
 import { StyleSheet } from "react-native-unistyles";
+import { platformChromeMaterialFill } from "@/styles/platform-chrome";
 import { SPACING } from "@/styles/theme";
 
 export const COMPOSER_PILL_CLEARANCE = {
@@ -36,10 +37,12 @@ export const composerPillStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius["2xl"],
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
-    backgroundColor: theme.colors.surface1,
+    // The material paints the pill on HarmonyOS; everywhere else `surface1` stays. Press feedback
+    // there comes from the material's own `interactive`/`lightEffect`, not from `bodyActive`.
+    backgroundColor: platformChromeMaterialFill ?? theme.colors.surface1,
   },
   bodyActive: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: platformChromeMaterialFill ?? theme.colors.surface2,
   },
   label: {
     fontSize: theme.fontSize.sm,

@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Import as ImportIcon } from "lucide-react-native";
+import { MaterialView } from "@/components/ui/material-view";
 import { composerPillStyles } from "@/composer/pill-styles";
 import type { Theme } from "@/styles/theme";
 
@@ -28,7 +29,7 @@ export function ComposerImportPill({ onPress, disabled = false }: ComposerImport
     [isHovered],
   );
   return (
-    <View style={styles.row}>
+    <MaterialView thickness="thin" interactive style={styles.row}>
       <Pressable
         testID="composer-import-agent-pill"
         accessibilityRole="button"
@@ -44,7 +45,7 @@ export function ComposerImportPill({ onPress, disabled = false }: ComposerImport
           {t("importSession.title")}
         </Text>
       </Pressable>
-    </View>
+    </MaterialView>
   );
 }
 

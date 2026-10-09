@@ -22,6 +22,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { platformChromeStyles } from "@/styles/platform-chrome";
+import { MaterialView } from "@/components/ui/material-view";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import { useDictation } from "@/hooks/use-dictation";
 import { DictationOverlay } from "@/components/dictation-controls";
@@ -1794,9 +1795,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           autoFocusKey={autoFocusKey}
           textInputRef={textInputRef}
         />
-        {/* Regular input */}
-        <View
+        {/* Regular input. A material surface on HarmonyOS: the card's fill and shadow come from
+            the material, its radius and border from the card style. */}
+        <MaterialView
           ref={inputWrapperRef}
+          thickness="regular"
+          interactive
+          applyShadow
           style={inputWrapperCombinedStyle}
           pointerEvents={surfacePresentation.input.pointerEvents}
         >
@@ -1881,7 +1886,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               />
             </View>
           </View>
-        </View>
+        </MaterialView>
 
         <View
           style={overlayContainerStyle}

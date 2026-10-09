@@ -26,6 +26,7 @@ import {
   iconButtonChromeStyle,
   type IconButtonChromeState,
 } from "@/components/ui/icon-button-chrome";
+import { MaterialView } from "@/components/ui/material-view";
 import { composerPillStyles } from "@/composer/pill-styles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
@@ -318,10 +319,18 @@ function ButtonControl({ view }: { view: ButtonView }) {
     </Pressable>
   );
   const pages = useMemo(() => buttonPages(view, button.behavior), [view, button.behavior]);
+  // A composer pill is a material surface on HarmonyOS; a header button keeps its own chrome.
+  const triggerSurface = composer ? (
+    <MaterialView thickness="thin" interactive>
+      {trigger}
+    </MaterialView>
+  ) : (
+    trigger
+  );
   return (
     <MenuRoot compactMode="sheet" open={entry.open} onOpenChange={setOpen}>
       <Tooltip enabledOnMobile={false}>
-        <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+        <TooltipTrigger asChild>{triggerSurface}</TooltipTrigger>
         <TooltipContent>
           <Text style={styles.tooltipLabel}>{button.title}</Text>
         </TooltipContent>
