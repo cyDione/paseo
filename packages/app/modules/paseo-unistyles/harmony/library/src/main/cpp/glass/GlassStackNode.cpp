@@ -225,21 +225,28 @@ void GlassStackNode::applyMaterial(const GlassConfig &config) {
 
   ArkUI_LightEffectOptionsHandle lightEffectOptions = nullptr;
   if (api.setLightEffect != nullptr) {
-    if (config.lightColor != 0 && api.createLightEffectOptions != nullptr) {
-      lightEffectOptions = api.createLightEffectOptions();
+    if (config.lightColor != 0) {
+      if (api.createLightEffectOptions == nullptr) {
+        LOG(WARNING) << "PaseoGlass: LightEffectOptions_Create symbol missing, light effect skipped";
+      } else {
+        lightEffectOptions = api.createLightEffectOptions();
+        if (lightEffectOptions == nullptr) {
+          LOG(WARNING) << "PaseoGlass: LightEffectOptions_Create returned null, light effect skipped";
+        }
+      }
     }
     if (lightEffectOptions != nullptr && api.setLightEffectColor != nullptr) {
-      ArkUI_ErrorCode code = api.setLightEffectColor(lightEffectOptions, static_cast<uint32_t>(config.lightColor));
+      ArkUI_ErrorCode colorCode =
+          api.setLightEffectColor(lightEffectOptions, static_cast<uint32_t>(config.lightColor));
       LOG(INFO) << "PaseoGlass: LightEffectOptions_SetColor(" << colorName(config.lightColor)
-                << ") code=" << static_cast<int32_t>(code);
+                << ") code=" << static_cast<int32_t>(colorCode);
+    } else if (lightEffectOptions != nullptr) {
+      LOG(WARNING) << "PaseoGlass: LightEffectOptions_SetColor symbol missing, skipped";
     }
-    if (config.lightColor != 0 && lightEffectOptions == nullptr) {
-      LOG(WARNING) << "PaseoGlass: LightEffectOptions_Create unavailable, light effect skipped";
-    }
-    ArkUI_ErrorCode code = api.setLightEffect(material, lightEffectOptions);
+    ArkUI_ErrorCode lightCode = api.setLightEffect(material, lightEffectOptions);
     LOG(INFO) << "PaseoGlass: SetLightEffect("
               << (lightEffectOptions != nullptr ? colorName(config.lightColor) : "off")
-              << ") code=" << static_cast<int32_t>(code);
+              << ") code=" << static_cast<int32_t>(lightCode);
   } else {
     LOG(WARNING) << "PaseoGlass: SetLightEffect symbol missing, skipped";
   }
@@ -248,7 +255,9 @@ void GlassStackNode::applyMaterial(const GlassConfig &config) {
   int32_t status = NativeNodeApi::getInstance()->setAttribute(m_nodeHandle, NODE_SYSTEM_MATERIAL, &item);
   LOG(INFO) << "PaseoGlass: setAttribute(NODE_SYSTEM_MATERIAL) status=" << status;
   if (status != ARKUI_ERROR_CODE_NO_ERROR) {
-    if (lightEffectOptions != nullptr) {
+    // A partial symbol set could have handed us options without a destructor; never call through
+    // a null function pointer.
+    if (lightEffectOptions != nullptr && api.destroyLightEffectOptions != nullptr) {
       api.destroyLightEffectOptions(lightEffectOptions);
     }
     api.destroyImmersiveMaterial(material);
