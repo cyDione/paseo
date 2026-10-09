@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { resolveComposerOverlayInset } from "@/composer/dock/internal/overlay-clearance";
+import { useComposerOverlayHeight } from "@/composer/dock/overlay-layout";
+import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import {
   MenuRoot,
   MenuSeparator,
@@ -30,8 +33,18 @@ import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
  * the final footer clear without turning the overlay into a layout band.
  */
 export function ComposerTrackBar({ children }: { children: ReactNode }): ReactElement {
+  // The strip rests directly on the composer: nothing while it is in the flow, its measured
+  // height while it floats over the transcript (HarmonyOS chat panes).
+  const composerHeight = useComposerOverlayHeight();
+  const barStyle = useMemo(
+    () =>
+      inlineUnistylesStyle({
+        bottom: resolveComposerOverlayInset({ clearance: 0, composerHeight }),
+      }),
+    [composerHeight],
+  );
   return (
-    <View style={styles.bar} pointerEvents="box-none">
+    <View style={[styles.bar, barStyle]} pointerEvents="box-none">
       <View style={styles.track} pointerEvents="box-none">
         {children}
       </View>

@@ -20,6 +20,8 @@ import {
   updateComposerCapacity,
   type ComposerCapacity,
 } from "./internal/capacity";
+import { ComposerOverlayHeightContext } from "./internal/overlay-height-context";
+import { COMPOSER_OVERLAYS_CONTENT } from "./overlay-layout";
 
 const ViewportCapacity = createContext<SharedValue<number | undefined> | null>(null);
 
@@ -105,18 +107,31 @@ function useCenteredClearance(safeAreaBottom: number) {
 interface ComposerDockProps {
   children: [ReactNode, ReactNode, ReactNode?];
   centered?: boolean;
+  /**
+   * Float the composer over the transcript on platforms that support it, so the transcript runs
+   * to the bottom of the pane and passes under the composer. The chat pane asks for it; the
+   * draft and new-workspace docks keep the composer in the flow.
+   */
+  overlayContent?: boolean;
 }
 
 /** The stationary viewport, translated surface, and bounded composer are one owner. */
 export function ComposerDock({
   children: [content, composer, overlay],
   centered = false,
+  overlayContent = false,
 }: ComposerDockProps) {
   const insets = useSafeAreaInsets();
   const contentMaxWidth = resolveContentMaxWidth(useAppSettings().settings);
   const centeredClearance = useCenteredClearance(insets.bottom);
   // Preserve the existing centered form's visual balance on tablets.
   const bottomInset = centered ? HEADER_INNER_HEIGHT + 24 : 0;
+  // The transcript and the pill strip clear this much while the composer floats; measured here
+  // because the dock is the only owner of the composer's box.
+  const [composerHeight, setComposerHeight] = useState(0);
+  const measureFloatingComposer = useCallback((event: LayoutChangeEvent) => {
+    setComposerHeight(event.nativeEvent.layout.height);
+  }, []);
   if (centered) {
     return (
       <ComposerViewport
@@ -139,6 +154,37 @@ export function ComposerDock({
             </ComposerViewportContent>
           </ComposerViewportContent>
           {overlay}
+        </KeyboardTranslateView>
+      </ComposerViewport>
+    );
+  }
+  if (overlayContent && COMPOSER_OVERLAYS_CONTENT) {
+    return (
+      <ComposerViewport style={dockStyles.viewport}>
+        <KeyboardTranslateView style={dockStyles.surface}>
+          <ComposerOverlayHeightContext.Provider value={composerHeight}>
+            <View
+              testID="composer-dock-content"
+              collapsable={false}
+              style={dockStyles.content}
+              pointerEvents="box-none"
+            >
+              {/* A responder ancestor intercepts native scroll drags on Android Fabric.
+                  Only unclaimed background touches may reach this sibling. */}
+              <ComposerDockBackground style={StyleSheet.absoluteFill} />
+              <View style={dockStyles.content} pointerEvents="box-none">
+                {content}
+              </View>
+            </View>
+            <View style={dockStyles.floatingComposer} onLayout={measureFloatingComposer}>
+              <ComposerViewportContent style={dockStyles.composer}>
+                <View style={[dockStyles.composer, { paddingBottom: insets.bottom }]}>
+                  {composer}
+                </View>
+              </ComposerViewportContent>
+            </View>
+            {overlay}
+          </ComposerOverlayHeightContext.Provider>
         </KeyboardTranslateView>
       </ComposerViewport>
     );
@@ -175,6 +221,8 @@ const dockStyles = StyleSheet.create({
   surface: { flex: 1 },
   content: { flex: 1, justifyContent: "flex-end" },
   composer: { width: "100%", flexShrink: 1 },
+  // Out of the flow: the transcript keeps the whole viewport and this hugs the composer's box.
+  floatingComposer: { position: "absolute", left: 0, right: 0, bottom: 0 },
   centeredViewport: { flex: 1, alignItems: "center", justifyContent: "center" },
   centered: { flexShrink: 1, width: "100%" },
   // Reserve the composer's own capped height before the setup scroll view shrinks.

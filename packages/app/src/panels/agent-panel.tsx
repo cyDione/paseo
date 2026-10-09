@@ -32,6 +32,8 @@ import {
   resolveComposerTrackControlClearance,
   resolveComposerTrackTailClearance,
 } from "@/composer/pill-styles";
+import { resolveComposerOverlayInset } from "@/composer/dock/internal/overlay-clearance";
+import { useComposerOverlayHeight } from "@/composer/dock/overlay-layout";
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { useProviderIcon } from "@/components/provider-icons";
@@ -1327,7 +1329,7 @@ function ChatSurface({
 }) {
   return (
     <FileDropZone style={styles.container} disabled={disabled}>
-      <ComposerDock>{children}</ComposerDock>
+      <ComposerDock overlayContent>{children}</ComposerDock>
     </FileDropZone>
   );
 }
@@ -1391,12 +1393,21 @@ const AgentStreamSection = memo(function AgentStreamSection({
   const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId);
   const hasVisibleComposerTracks =
     hasActiveComposer && (hasVisibleAgentTracks || hasWorkspaceDiffStat);
-  const bottomOverlayTailClearance = hasVisibleComposerTracks
-    ? resolveComposerTrackTailClearance(isCompactFormFactor)
-    : 0;
-  const bottomOverlayControlClearance = hasVisibleComposerTracks
-    ? resolveComposerTrackControlClearance(isCompactFormFactor)
-    : 0;
+  // Zero unless the composer floats over this transcript (HarmonyOS chat panes); see
+  // composer/dock/overlay-layout.
+  const composerOverlayHeight = useComposerOverlayHeight();
+  const bottomOverlayTailClearance = resolveComposerOverlayInset({
+    clearance: hasVisibleComposerTracks
+      ? resolveComposerTrackTailClearance(isCompactFormFactor)
+      : 0,
+    composerHeight: composerOverlayHeight,
+  });
+  const bottomOverlayControlClearance = resolveComposerOverlayInset({
+    clearance: hasVisibleComposerTracks
+      ? resolveComposerTrackControlClearance(isCompactFormFactor)
+      : 0,
+    composerHeight: composerOverlayHeight,
+  });
   const streamItemsRaw = useSessionStore((state) =>
     agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
   );

@@ -8,6 +8,8 @@ import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 interface ComposerDockProps {
   children: [ReactNode, ReactNode, ReactNode?];
   centered?: boolean;
+  /** The chat pane asks for a composer that floats over the transcript; see overlay-layout.*. */
+  overlayContent?: boolean;
 }
 
 export function ComposerDock({
