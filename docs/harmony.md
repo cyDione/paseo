@@ -180,9 +180,35 @@ when the system scheme changes.
 apply the API 26 immersive system material (`NODE_SYSTEM_MATERIAL`). JS reaches
 them through `GlassLayer` (`packages/app/src/components/ui/glass-layer.*`), a
 no-op on every other platform, so call sites stay unconditional. The layer is
-absolutely positioned under the surface's content, takes no part in layout and
-drops pointer events, so a surface only has to give it the same corner radius and
-an empty fill.
+absolutely positioned above the surface's own fill and under its content, takes
+no part in layout and drops pointer events, so a surface only has to give it the
+same corner radius and a translucent fill.
+
+### The surface owns its fill, the layer is not the paint
+
+A surface must never rely on the layer for being visible. Three failures leave the
+layer painting nothing: the HAP did not register the native view, the device does
+not support the material, or the material rejects its color. A surface that handed
+its fill to the layer then shows live content through the drawer, the sheet, or the
+menu. The drawer was reported as "no transparency, no frost, just fully
+transparent" in exactly that state.
+
+Every surface therefore keeps its own theme token as a semi-transparent fill and
+adds the layer on top. `platformChromeGlassFillColor(color)`
+(`styles/platform-chrome.ts`, `styles/platform-chrome.harmony.ts`) returns the
+token unchanged on every platform but HarmonyOS, where it returns the same token
+at `GLASS_FALLBACK_FILL_ALPHA` (0.78) as an `rgba()` string. 0.78 keeps the surface
+readable and still lets the material through. Callers pass the surface's own token
+— `surfaceSidebar` for the drawer, `surface0` for the bottom sheets, `surface1`
+for the menu popover and the modal card — so a surface whose token differs from
+the entry it shared gets its own entry (`comboboxPanel` next to `menuPanel`).
+
+Two shapes of call site exist, for the reason in [Unistyles gotchas](unistyles.md):
+ordinary views append a `platformChromeStyles` entry, while the bottom-sheet
+backgrounds and the drawer are Reanimated `Animated.View`s and take the color as a
+plain value. The menu sheet's own background component (`glass-sheet-background.harmony.tsx`)
+has no theme access at all: it re-stamps the `backgroundColor` of the caller's
+`backgroundStyle`, which is where the token already sits.
 
 ### The material needs a color to be visible
 
@@ -211,23 +237,44 @@ swaps in the accent token at 25%, and the light effect is white at 50% (light) o
 25% (dark). Only the light-effect white is a literal; unit tests pin the alpha byte
 and the scheme mapping.
 
+### The node carries its own blur and tint as well
+
+`GlassStackNode::applyTintedFill` sets `NODE_BACKDROP_BLUR`
+(`kBackdropBlurRadiusPx`, 24px) and `NODE_BACKGROUND_COLOR` to the material color on
+every path where a color exists, material or not. The material is an enhancement
+over that fill, never a replacement for it, so a device where the material paints
+nothing still shows tinted frosted glass — that is what the first version of this
+layer got wrong, and it is why the summary log prints both.
+
+`native_node.h` describes how the two interact. At `ARKUI_MATERIAL_LEVEL_EXQUISITE`
+and `GENTLE`, the material affects the filter effect of the material layer and the
+shadow, so the explicit blur, tint and the material stack: the material adds glass
+light and shadow over our fill. At `SMOOTH` the material drives the
+`backgroundColor`, `borderWidth`, `borderColor` and shadow itself, so it may
+replace the explicit fill — with the same tint, since that is the color the material
+was given via `SetMaterialColor`. Either way the surface reads as tinted frosted
+glass; the fill is applied after `NODE_SYSTEM_MATERIAL` so the node's own
+background is the last word wherever the device honors it.
+
 ### Where the layer sits
 
-| Surface                                                          | Thickness | Fill override                                               |
-| ---------------------------------------------------------------- | --------- | ----------------------------------------------------------- |
-| Circular header icon buttons                                     | `regular` | `platformChromeStyles.headerButton`                         |
-| Composer card                                                    | `regular` | `platformChromeStyles.composerCard`                         |
-| `AdaptiveModalSheet` compact sheet background and desktop card   | `thick`   | `platformChromeGlassFill`, `platformChromeStyles.modalCard` |
-| Menu popovers (`menu-overlay.tsx`, `combobox.tsx` desktop panel) | `regular` | `platformChromeStyles.menuPanel`                            |
-| Menu and combobox compact sheets                                 | `regular` | `platformChromeGlassFill`                                   |
-| Compact left sidebar drawer                                      | `thick`   | `platformChromeGlassFill`                                   |
+| Surface                                                   | Thickness | Fill                                                       |
+| --------------------------------------------------------- | --------- | ---------------------------------------------------------- |
+| Circular header icon buttons                              | `regular` | none — the layer paints the control                        |
+| Composer card                                             | `regular` | none — the layer paints the control                        |
+| `AdaptiveModalSheet` compact sheet background             | `thick`   | `platformChromeGlassFillColor(surface0)`                   |
+| `AdaptiveModalSheet` desktop card                         | `thick`   | `platformChromeStyles.modalCard` (`surface1`)              |
+| Menu popovers (`menu-overlay.tsx`)                        | `regular` | `platformChromeStyles.menuPanel` (`surface1`)              |
+| Combobox desktop popover (`combobox.tsx`)                 | `regular` | `platformChromeStyles.comboboxPanel` (`surface0`)          |
+| Menu compact sheet (`glass-sheet-background.harmony.tsx`) | `regular` | the caller's `backgroundStyle` token at the fallback alpha |
+| Combobox compact sheet (`combobox.tsx`)                   | `regular` | `platformChromeGlassFillColor(surface0)`                   |
+| Compact left sidebar drawer                               | `thick`   | `platformChromeGlassFillColor(surfaceSidebar)`             |
 
-Every surface has to hand its own fill to the layer; an opaque `backgroundColor`
-covers the material. `platformChromeStyles` entries are for ordinary views, while
-the bottom-sheet backgrounds and the drawer are Reanimated `Animated.View`s and
-take the plain `platformChromeGlassFill` object instead, because a registered style
-on those nodes can crash on theme change ([Unistyles gotchas](unistyles.md)).
-`GLASS_LAYER_ENABLED` is exported by `glass-layer.tsx` (false) and
+An opaque `backgroundColor` covers the material, which is why every fill above is
+either the fallback alpha or nothing. The header button and the composer card are
+the two surfaces that keep a transparent fill: their layer is sized to the control
+(a circle, the card's radius) and paints the visible surface there. `GLASS_LAYER_ENABLED`
+is exported by `glass-layer.tsx` (false) and
 `glass-layer.harmony.tsx` (true) for the one case where a shared call site has to
 render differently on Harmony — `header-toggle-button.tsx` wraps its children in a
 state function only there.
@@ -241,17 +288,44 @@ resolves every one of them from `libace_ndk.z.so` with `dlopen`/`dlsym` at runti
 Linking them directly would make `libpaseo_unistyles.so` unloadable on older system
 images. A missing symbol skips that knob and logs it; if `SetMaterialColor` itself is
 missing or rejects the color, the material cannot be visible and the view degrades
-instead. That fallback is `NODE_BACKDROP_BLUR` plus `NODE_BACKGROUND_COLOR` set to
-the same material color, so a degraded layer still reads as tinted frosted glass
-rather than disappearing again. The JS layer is wrapped in an error boundary, so a
-HAP that skipped the native registration renders nothing instead of failing the
-surface. Nothing here throws or aborts.
+to `applyTintedFill` instead. The JS layer is wrapped in an error boundary, so a
+HAP that skipped the native registration still renders the surface. Nothing here
+throws or aborts.
 
 `hdc hilog | grep PaseoGlass` prints the support flag, the device material level, the
 style and the requested values, the return code of each knob (`SetMaterialColor`,
 `SetApplyShadow`, `SetInteractive`, `LightEffectOptions_SetColor`, `SetLightEffect`),
 the `setAttribute(NODE_SYSTEM_MATERIAL)` status, the degradation reason when one was
 taken, and the live glass view count on create and destroy.
+
+`hdc hilog | grep "PaseoGlass: summary"` prints one line per view after its
+attributes are set, which is the fastest way to see where the layers ended up:
+
+```
+PaseoGlass: summary style=thick path=material blur=0 bg=0 material=0
+PaseoGlass: summary style=regular path=degraded blur=0 bg=0 material=none
+```
+
+`path=material` means the material was accepted; `path=degraded` means it was not,
+and any non-zero `blur`/`bg`/`material` is an ArkUI status code for a rejected
+attribute. `none` in `blur`/`bg` means the layer had no material color to use.
+
+### Diagnostics
+
+Nobody reads hilog on a phone, so both sides can tint the outcome instead. Two
+compile-time constants, on by default, both to be turned off (or deleted with the
+tint) once the material is verified on a device:
+
+| Signal                               | Meaning                                                                 | Where                                                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Red overlay, `rgba(255, 0, 0, 0.25)` | The native view never registered or threw: there is no glass layer      | `GLASS_DIAGNOSTIC_TINTS` in `glass-layer.harmony.tsx`                                             |
+| Orange cast mixed into the fill      | The material degraded; the layer is blur plus tint, not system material | `kDiagnosticTintOnDegrade` in `cpp/glass/GlassStackNode.cpp` (0x33FF8800 over the material color) |
+| No tint                              | The system material applied                                             | —                                                                                                 |
+
+Both are visible in the summary log as well (`path=material` vs `path=degraded`),
+so a screenshot and a log line always agree. Neither diagnostic touches the
+non-Harmony path: the JS constant lives in the Harmony module, and the native one
+in the Harmony HAR.
 
 ## Foldable and split-window behavior
 
