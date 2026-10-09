@@ -543,6 +543,34 @@ test("Harmony build action generates the project from a clean checkout", () => {
   );
 });
 
+test("Harmony hosted builds reuse npm, ohpm, ccache and Metro caches", () => {
+  const toolchain = readRepoFile(".github/actions/harmony-toolchain/action.yml");
+  const build = readRepoFile(".github/actions/harmony-build/action.yml");
+  // ccache has to be installed, announced to the build, and reachable from the compile: the SDK
+  // toolchain pins the compilers, so the launcher is appended to its toolchain file.
+  assert.match(toolchain, /apt-get install[^\n]*\\\n[^\n]*\bccache\b/);
+  assert.match(toolchain, /cache: npm/);
+  assert.match(toolchain, /grep -q PASEO_CCACHE "\$toolchain"/);
+  assert.match(toolchain, /find_program\(PASEO_CCACHE ccache\)\n\s+if\(PASEO_CCACHE\)/);
+  assert.match(toolchain, /set\(CMAKE_CXX_COMPILER_LAUNCHER "\$\{PASEO_CCACHE\}"\)/);
+  assert.match(toolchain, /echo "HARMONY_HOSTED=true"/);
+  assert.match(toolchain, /echo "CCACHE_COMPILERCHECK=string:\$HARMONY_SDK_SHA256"/);
+  // The toolchain file is edited only after the archive digest check.
+  assert.ok(toolchain.indexOf('"$HARMONY_SDK_SHA256"') < toolchain.indexOf("PASEO_CCACHE"));
+  for (const path of ["~/.ohpm/cache", "~/.cache/ccache", "/tmp/metro-cache"]) {
+    assert.ok(build.includes(`path: ${path}`), path);
+  }
+  // Caches apply to hosted runners only, and the statistics step runs even after a failure.
+  assert.equal((build.match(/if: \$\{\{ env\.HARMONY_HOSTED == 'true' \}\}/g) ?? []).length, 3);
+  assert.match(build, /if: \$\{\{ always\(\) && env\.HARMONY_HOSTED == 'true' \}\}/);
+  assert.match(build, /ccache --show-stats/);
+  // ccache entries are keyed per branch and commit so every build saves and restores the newest.
+  assert.match(
+    build,
+    /key: ccache-\$\{\{ runner\.os \}\}-\$\{\{ github\.ref_name \}\}-\$\{\{ github\.sha \}\}/,
+  );
+});
+
 test("Harmony HAP workflow builds the pushed commit with read-only credentials", () => {
   const source = readRepoFile(".github/workflows/harmony-hap.yml");
   assert.match(source.split("jobs:", 1)[0], /permissions:\s*\n\s+contents: read/);

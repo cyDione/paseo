@@ -100,6 +100,18 @@ does not merge upstream, so it works for feature work that the sync workflow ski
 Both workflows share the toolchain install and the build steps in
 `.github/actions/harmony-toolchain` and `.github/actions/harmony-build`.
 
+Hosted builds restore four caches (npm, the ohpm download cache, ccache for the
+native C++, and Metro's transform cache), which takes a repeat build from about 32
+minutes to about 15. The compile is the biggest part: the SDK pins its compilers in
+`ohos.toolchain.cmake`, so the toolchain action appends a ccache launcher to that
+file after it verifies the archive digest. `harmony-build` prints `ccache` statistics
+at the end; a warm build shows a high hit rate there and a cold one shows none. If the
+hit rate stays near zero on a repeat build, the launcher is not reaching the compile.
+
+A cache is readable only from the branch that wrote it and from the default branch,
+so do all Harmony UI work on `harmony/ui` and push there. A new branch starts cold.
+Entries unused for seven days are evicted, and the repository cap is 10 GB.
+
 To use a self-hosted Linux x64 runner instead, give it a label and set
 `HARMONY_RUNNER_LABEL` to that label. Set `HARMONY_ENV_FILE` to its DevEco
 activation script (default `/workspace/harmony-tools/env.sh`). That script must

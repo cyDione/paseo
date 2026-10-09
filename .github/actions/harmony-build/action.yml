@@ -4,6 +4,35 @@ description: Install dependencies and build the unsigned Harmony Release HAP. Ru
 runs:
   using: composite
   steps:
+    # Caches only apply on hosted runners (harmony-toolchain sets HARMONY_HOSTED). They are
+    # scoped to the branch that wrote them plus the default branch, so builds that share a
+    # branch share caches; keep Harmony UI work on one long-lived branch.
+    - name: Restore the ohpm download cache
+      if: ${{ env.HARMONY_HOSTED == 'true' }}
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: ~/.ohpm/cache
+        key: ohpm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ohpm-${{ runner.os }}-
+    - name: Restore the compiler cache
+      if: ${{ env.HARMONY_HOSTED == 'true' }}
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ runner.os }}-${{ github.ref_name }}-
+          ccache-${{ runner.os }}-
+    - name: Restore the Metro transform cache
+      if: ${{ env.HARMONY_HOSTED == 'true' }}
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: /tmp/metro-cache
+        key: metro-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+        restore-keys: |
+          metro-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+          metro-${{ runner.os }}-
     - name: Install and build the native HAP
       shell: bash
       # A cold hosted build spends about 14 minutes in Hvigor and the expo-harmony CLI
@@ -26,3 +55,10 @@ runs:
         npm run harmony:build
         npm run harmony:doctor
         npm run harmony:modules --workspace=@getpaseo/app
+    - name: Show cache statistics
+      if: ${{ always() && env.HARMONY_HOSTED == 'true' }}
+      shell: bash
+      run: |
+        # A warm native build shows a high ccache hit rate here; a cold one shows none.
+        ccache --show-stats --verbose || true
+        du -sh ~/.ohpm/cache ~/.cache/ccache /tmp/metro-cache 2>/dev/null || true

@@ -22,7 +22,7 @@ runs:
         # The SDK's resource compiler and linker need these shared libraries.
         sudo apt-get update -o Dpkg::Use-Pty=0
         sudo apt-get install -y --no-install-recommends -o Dpkg::Use-Pty=0 \
-          libgl1 libegl1 libgles2 libglx0 libxml2 libexpat1-dev libjsoncpp-dev
+          libgl1 libegl1 libgles2 libglx0 libxml2 libexpat1-dev libjsoncpp-dev ccache
         free -g
         df -h / /mnt
     - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
@@ -34,6 +34,7 @@ runs:
       if: ${{ inputs.hosted == 'true' }}
       with:
         node-version: "24.14.1"
+        cache: npm
     - name: Install the DevEco CLI 26.0.0 on the hosted runner
       if: ${{ inputs.hosted == 'true' }}
       shell: bash
@@ -69,6 +70,21 @@ runs:
         fi
         sdk="$root/command-line-tools/sdk/default"
         libs="$sdk/openharmony/previewer/common/bin:$sdk/hms/toolchains/lib"
+        # The OHOS toolchain file pins the compilers, so the launcher cannot come from the
+        # environment. The archive digest was verified above; this edit comes after it.
+        toolchain="$sdk/openharmony/native/build/cmake/ohos.toolchain.cmake"
+        test -f "$toolchain"
+        if ! grep -q PASEO_CCACHE "$toolchain"; then
+          cat >> "$toolchain" <<'CMAKE'
+
+        # paseo: route compiles through ccache when it is installed (hosted CI only).
+        find_program(PASEO_CCACHE ccache)
+        if(PASEO_CCACHE)
+          set(CMAKE_C_COMPILER_LAUNCHER "${PASEO_CCACHE}")
+          set(CMAKE_CXX_COMPILER_LAUNCHER "${PASEO_CCACHE}")
+        endif()
+        CMAKE
+        fi
         node_home="$(dirname "$(dirname "$(command -v node)")")"
         env_file="$RUNNER_TEMP/harmony-env.sh"
         {
@@ -83,6 +99,15 @@ runs:
         {
           echo "HARMONY_ENV_FILE=$env_file"
           echo "HARMONY_LD_LIBRARY_PATH=$libs"
+          echo "HARMONY_HOSTED=true"
+          # The compiler is pinned by the SDK digest, so its identity is that digest rather than
+          # a hash of a 200 MB binary on every compile.
+          echo "CCACHE_DIR=$HOME/.cache/ccache"
+          echo "CCACHE_MAXSIZE=3G"
+          echo "CCACHE_COMPRESS=1"
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+          echo "CCACHE_NOHASHDIR=1"
+          echo "CCACHE_COMPILERCHECK=string:$HARMONY_SDK_SHA256"
         } >> "$GITHUB_ENV"
     - name: Activate installed DevEco CLI 26.0.0
       shell: bash
