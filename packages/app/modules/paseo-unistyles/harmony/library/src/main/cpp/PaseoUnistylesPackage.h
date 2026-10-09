@@ -38,5 +38,10 @@ public:
   ComponentJSIBinderByString createComponentJSIBinderByName() override {
     return paseo_material::createComponentJSIBinderByName();
   }
+
+  // Second prop channel: `descriptor.props` on the ArkTS side; `rawProps` needs no binder.
+  ComponentNapiBinderByString createComponentNapiBinderByName() override {
+    return paseo_material::createComponentNapiBinderByName();
+  }
 };
 }

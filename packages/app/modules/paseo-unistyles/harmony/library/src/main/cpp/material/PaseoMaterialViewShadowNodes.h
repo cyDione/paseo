@@ -4,24 +4,47 @@
 #include <react/renderer/components/view/ViewEventEmitter.h>
 #include <react/renderer/components/view/ViewProps.h>
 
+#include <string>
+
 namespace facebook {
 namespace react {
 
 /**
- * One component name, declared here and defined in MaterialRegistration.cpp so every translation
- * unit that stamps the shadow node sees the same string. Ring the JS side along when it changes
- * (components/ui/material-view.harmony.tsx).
+ * Two component names, one props class. The name is the signal that survives when the props do not:
+ * it selects the built-in tint the ArkTS side falls back to, so a light and a dark surface still
+ * read as frosted glass when nothing else arrives. Defined in MaterialRegistration.cpp.
  */
-extern const char PaseoMaterialViewName[];
+extern const char PaseoMaterialLightName[];
+extern const char PaseoMaterialDarkName[];
 
 /**
- * Plain `ViewProps`: the material props are raw (read from `descriptor.rawProps` on the ArkTS
- * side), so nothing here consumes them and no codegen step is involved. The component is mounted
- * as an ArkTS component — it must not register a C++ component instance, or the mounting manager
- * would take the C-API path and the material would never be created.
+ * The material props are read twice on purpose. `Props::rawProps` — the RNOH patch in
+ * `Props.h` — already carries every prop the view config lets through, and this typed copy is what
+ * the `ComponentNapiBinder` ships to ArkTS as `descriptor.props`. The ArkTS component prefers the
+ * typed copy, falls back to `rawProps`, then to its built-in default, and logs which one it used:
+ * a prop that never arrives has to be visible in hilog, not silently render the default.
  */
-using PaseoMaterialViewShadowNode =
-    ConcreteViewShadowNode<PaseoMaterialViewName, ViewProps, ViewEventEmitter>;
+class PaseoMaterialViewProps final : public ViewProps {
+ public:
+  PaseoMaterialViewProps() = default;
+
+  PaseoMaterialViewProps(
+      const PropsParserContext &context,
+      const PaseoMaterialViewProps &sourceProps,
+      const RawProps &rawProps);
+
+  std::string thickness{};
+  std::string materialColor{};
+  std::string degradedColor{};
+  std::string lightColor{};
+  bool interactive{false};
+  bool applyShadow{true};
+};
+
+using PaseoMaterialLightShadowNode =
+    ConcreteViewShadowNode<PaseoMaterialLightName, PaseoMaterialViewProps, ViewEventEmitter>;
+using PaseoMaterialDarkShadowNode =
+    ConcreteViewShadowNode<PaseoMaterialDarkName, PaseoMaterialViewProps, ViewEventEmitter>;
 
 } // namespace react
 } // namespace facebook

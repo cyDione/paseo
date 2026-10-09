@@ -1,16 +1,18 @@
 /**
- * `PaseoMaterialView`: an RN view whose background is an ArkUI system material.
+ * `PaseoMaterialLight` / `PaseoMaterialDark`: an RN view whose background is an ArkUI system
+ * material, with a visible frosted-glass fallback that does not depend on the material or on the
+ * props arriving.
  *
  * The material is a node attribute, so it can only paint a node that *contains* what should show
  * through it — that is also what `colorInvert` needs, since it adapts the colors of the node's
- * subtree. The RN children therefore live inside this component (`ContentSlot`), and the C++
- * layout rect pinned on this component's frame node is the box the material fills.
+ * subtree. The RN children therefore live inside this component (`ContentSlot`), and the C++ layout
+ * rect pinned on this component's frame node is the box the material fills.
  *
- * This component deliberately does not use `RNViewBase`: the ARKUI node for an ArkTS component is
+ * This component deliberately does not use `RNViewBase`: the ArkUI node for an ArkTS component is
  * already positioned by the layout rect the C++ side sets on its wrapper, and `RNViewBase`
- * re-applies the same origin from `layoutMetrics`, which would offset anything that does not
- * start at (0, 0). It applies the view properties the material surfaces need (corner radius,
- * border, opacity) from the descriptor instead.
+ * re-applies the same origin from `layoutMetrics`, which would offset anything that does not start
+ * at (0, 0). It applies the view properties the material surfaces need (corner radius, border,
+ * opacity) from the descriptor instead.
  */
 import deviceInfo from '@ohos.deviceInfo';
 import hilog from '@ohos.hilog';
@@ -35,12 +37,37 @@ const HILOG_TAG: string = 'PaseoMaterial';
 const MATERIAL_API_VERSION: number = 26;
 const UNAVAILABLE_METRIC: number = -1;
 
-function isMaterialApiAvailable(): boolean {
-  return deviceInfo.sdkApiVersion >= MATERIAL_API_VERSION;
-}
+export type PaseoMaterialScheme = 'light' | 'dark';
+
+/**
+ * Built-in tints, used whenever the JS color does not arrive. They are the difference between
+ * "invisible" and "frosted glass": an unset material color is transparent, so a surface that relies
+ * on the props alone disappears completely when the props do. Both are translucent by construction
+ * — an opaque fill would also block the material's own filter. Feel values, not derived from a
+ * token; `material-color.ts` sends the same order of magnitude for the themes.
+ */
+const DEFAULT_TINT_LIGHT: string = '#B3FFFFFF';
+const DEFAULT_TINT_DARK: string = '#66000000';
+/** Those tints with the degrade diagnostic's orange mixed in (20%), as material-color.ts does. */
+const DEFAULT_DEGRADED_TINT_LIGHT: string = '#B3FFE7CC';
+const DEFAULT_DEGRADED_TINT_DARK: string = '#66331B00';
+/** Light-effect white; dimmer on dark surfaces, like the JS mapping. */
+const DEFAULT_LIGHT_EFFECT_LIGHT: string = '#80FFFFFF';
+const DEFAULT_LIGHT_EFFECT_DARK: string = '#40FFFFFF';
+const DEFAULT_THICKNESS: string = 'regular';
 
 /** Raw props sent by `material-view.harmony.tsx`. Colors are `#AARRGGBB` strings. */
 export interface PaseoMaterialRawProps extends ViewRawProps {
+  thickness?: string;
+  materialColor?: string;
+  degradedColor?: string;
+  lightColor?: string;
+  interactive?: boolean;
+  applyShadow?: boolean;
+}
+
+/** The typed copy the `ComponentNapiBinder` ships as `descriptor.props`. */
+export interface PaseoMaterialTypedProps {
   thickness?: string;
   materialColor?: string;
   degradedColor?: string;
@@ -53,10 +80,42 @@ export interface PaseoMaterialState {}
 
 export type PaseoMaterialDescriptor = Descriptor<
   string,
-  ViewBaseProps,
+  PaseoMaterialTypedProps,
   PaseoMaterialState,
   PaseoMaterialRawProps
 >;
+
+/**
+ * A prop value and where it came from: the typed `descriptor.props` copy, the generic
+ * `descriptor.rawProps` one, or nothing at all. Both are logged, so a delivery channel that stops
+ * carrying a value is visible instead of being masked by the built-in default.
+ */
+interface MaterialPropValue {
+  value: string | undefined;
+  source: string;
+}
+
+function resolveStringProp(typed: string | undefined, raw: string | undefined): MaterialPropValue {
+  if (typed !== undefined && typed.length > 0) {
+    return { value: typed, source: 'props' };
+  }
+  if (raw !== undefined && raw.length > 0) {
+    return { value: raw, source: 'rawProps' };
+  }
+  return { value: undefined, source: 'default' };
+}
+
+function defaultTint(scheme: PaseoMaterialScheme): string {
+  return scheme === 'dark' ? DEFAULT_TINT_DARK : DEFAULT_TINT_LIGHT;
+}
+
+function defaultDegradedTint(scheme: PaseoMaterialScheme): string {
+  return scheme === 'dark' ? DEFAULT_DEGRADED_TINT_DARK : DEFAULT_DEGRADED_TINT_LIGHT;
+}
+
+function defaultLightEffect(scheme: PaseoMaterialScheme): string {
+  return scheme === 'dark' ? DEFAULT_LIGHT_EFFECT_DARK : DEFAULT_LIGHT_EFFECT_LIGHT;
+}
 
 function toImmersiveStyle(thickness: string | undefined): uiMaterial.ImmersiveStyle {
   if (thickness === 'thin') {
@@ -69,49 +128,22 @@ function toImmersiveStyle(thickness: string | undefined): uiMaterial.ImmersiveSt
 }
 
 /**
- * Builds the material for one descriptor, or `undefined` when this device cannot render it. The
- * caller then paints `degradedColor` over a backdrop blur.
+ * The backdrop blur is not the material and does not depend on it: it is applied on every path, so
+ * the surface is frosted even where the material only recolors the node (the low-computing-power
+ * level) or does not exist at all.
  */
-function createMaterial(rawProps: PaseoMaterialRawProps): uiMaterial.Material | undefined {
-  if (!isMaterialApiAvailable() || !uiMaterial.isImmersiveMaterialSupported()) {
-    return undefined;
+function toBlurStyle(thickness: string | undefined): BlurStyle {
+  if (thickness === 'thin') {
+    return BlurStyle.Thin;
   }
-  const options: uiMaterial.ImmersiveOptions = {
-    style: toImmersiveStyle(rawProps.thickness),
-    colorInvert: true,
-    applyShadow: rawProps.applyShadow ?? true,
-    interactive: rawProps.interactive ?? false,
-  };
-  if (rawProps.materialColor !== undefined) {
-    options.materialColor = rawProps.materialColor;
+  if (thickness === 'thick') {
+    return BlurStyle.Thick;
   }
-  if (rawProps.lightColor !== undefined) {
-    const lightEffect: uiMaterial.LightEffectOptions = { color: rawProps.lightColor };
-    options.lightEffect = lightEffect;
-  }
-  return new uiMaterial.ImmersiveMaterial(options);
+  return BlurStyle.Regular;
 }
 
-/**
- * One line per material change: the device's support, how much it can do and the path this view
- * took. `level` and `state` are -1 when the material APIs do not exist on this system at all.
- */
-function logMaterial(rawProps: PaseoMaterialRawProps, material: uiMaterial.Material | undefined): void {
-  const apiAvailable: boolean = isMaterialApiAvailable();
-  const supported: boolean = apiAvailable && uiMaterial.isImmersiveMaterialSupported();
-  const level: number = apiAvailable ? uiMaterial.getGlobalMaterialLevel() : UNAVAILABLE_METRIC;
-  const state: number = apiAvailable ? uiMaterial.getMaterialInfo().state : UNAVAILABLE_METRIC;
-  hilog.info(
-    HILOG_DOMAIN,
-    HILOG_TAG,
-    'PaseoMaterial: supported=%{public}s level=%{public}d state=%{public}d api=%{public}d style=%{public}s path=%{public}s',
-    supported,
-    level,
-    state,
-    deviceInfo.sdkApiVersion,
-    rawProps.thickness ?? 'regular',
-    material === undefined ? 'degraded' : 'material',
-  );
+function isMaterialApiAvailable(): boolean {
+  return deviceInfo.sdkApiVersion >= MATERIAL_API_VERSION;
 }
 
 function toBorderStyle(style: string | undefined): BorderStyle {
@@ -125,23 +157,52 @@ function toBorderStyle(style: string | undefined): BorderStyle {
 }
 
 /**
- * The material, the corner radius that clips it and the border the RN style asked for all belong
- * to the same node, so they are applied by one modifier. A new instance is set on every
- * descriptor change, which is what makes ArkUI apply it again.
+ * Builds the material for one configuration, or `undefined` when this device cannot render it. The
+ * color always has a value: the JS one when it arrived, the built-in tint otherwise.
+ */
+function createMaterial(
+  thickness: string,
+  tintColor: string,
+  lightColor: string,
+  interactive: boolean,
+  applyShadow: boolean,
+): uiMaterial.Material | undefined {
+  if (!isMaterialApiAvailable() || !uiMaterial.isImmersiveMaterialSupported()) {
+    return undefined;
+  }
+  const lightEffect: uiMaterial.LightEffectOptions = { color: lightColor };
+  const options: uiMaterial.ImmersiveOptions = {
+    style: toImmersiveStyle(thickness),
+    materialColor: tintColor,
+    colorInvert: true,
+    applyShadow: applyShadow,
+    interactive: interactive,
+    lightEffect: lightEffect,
+  };
+  return new uiMaterial.ImmersiveMaterial(options);
+}
+
+/**
+ * The material, the corner radius that clips it, the border the RN style asked for and the backdrop
+ * blur all belong to the same node, so they are applied by one modifier. A new instance is set on
+ * every descriptor change, which is what makes ArkUI apply it again.
  */
 class PaseoMaterialAttributeModifier implements AttributeModifier<StackAttribute> {
   private readonly descriptor: PaseoMaterialDescriptor;
   private readonly material: uiMaterial.Material | undefined;
-  private readonly degradedColor: string | undefined;
+  private readonly fillColor: string;
+  private readonly blurStyle: BlurStyle;
 
   constructor(
     descriptor: PaseoMaterialDescriptor,
     material: uiMaterial.Material | undefined,
-    degradedColor: string | undefined,
+    fillColor: string,
+    blurStyle: BlurStyle,
   ) {
     this.descriptor = descriptor;
     this.material = material;
-    this.degradedColor = degradedColor;
+    this.fillColor = fillColor;
+    this.blurStyle = blurStyle;
   }
 
   applyNormalAttribute(instance: StackAttribute): void {
@@ -175,34 +236,115 @@ class PaseoMaterialAttributeModifier implements AttributeModifier<StackAttribute
     if (opacity !== 1) {
       instance.opacity(opacity);
     }
+    // The blur and the translucent fill are unconditional: they are what makes the surface visible
+    // as frosted glass. The material is an enhancement on top of them, never the only thing that
+    // paints — an unsupported material or a color that never arrived would leave the surface
+    // completely transparent.
+    instance.backgroundBlurStyle(this.blurStyle);
+    instance.backgroundColor(this.fillColor);
     if (this.material !== undefined) {
-      // The material owns the fill, the border and the shadow on this node; see docs/harmony.md
-      // for why the RN style must stay transparent behind it.
       instance.systemMaterial(this.material);
-      return;
-    }
-    instance.backgroundBlurStyle(BlurStyle.Thin);
-    if (this.degradedColor !== undefined) {
-      instance.backgroundColor(this.degradedColor);
     }
   }
 }
 
+/** Everything the log lines need: what arrived, what it was taken from, what was adopted. */
+interface MaterialLogInput {
+  viewName: string;
+  scheme: PaseoMaterialScheme;
+  rawProps: PaseoMaterialRawProps;
+  typedProps: PaseoMaterialTypedProps;
+  thickness: string;
+  tint: MaterialPropValue;
+  degraded: MaterialPropValue;
+  light: MaterialPropValue;
+  interactive: boolean;
+  applyShadow: boolean;
+  path: string;
+  blurStyle: BlurStyle;
+}
+
+/** One line per material configuration; see docs/harmony.md for how to read them. */
+function logMaterial(input: MaterialLogInput): void {
+  hilog.info(
+    HILOG_DOMAIN,
+    HILOG_TAG,
+    'PaseoMaterial: view=%{public}s scheme=%{public}s api=%{public}d supported=%{public}s level=%{public}d state=%{public}d',
+    input.viewName,
+    input.scheme,
+    deviceInfo.sdkApiVersion,
+    isMaterialApiAvailable() && uiMaterial.isImmersiveMaterialSupported(),
+    isMaterialApiAvailable() ? uiMaterial.getGlobalMaterialLevel() : UNAVAILABLE_METRIC,
+    isMaterialApiAvailable() ? uiMaterial.getMaterialInfo().state : UNAVAILABLE_METRIC,
+  );
+  hilog.info(
+    HILOG_DOMAIN,
+    HILOG_TAG,
+    'PaseoMaterial: raw props thickness=%{public}s materialColor=%{public}s lightColor=%{public}s interactive=%{public}s applyShadow=%{public}s',
+    input.rawProps.thickness ?? '',
+    input.rawProps.materialColor ?? '',
+    input.rawProps.lightColor ?? '',
+    input.rawProps.interactive ?? false,
+    input.rawProps.applyShadow ?? false,
+  );
+  hilog.info(
+    HILOG_DOMAIN,
+    HILOG_TAG,
+    'PaseoMaterial: typed props thickness=%{public}s materialColor=%{public}s lightColor=%{public}s',
+    input.typedProps.thickness ?? '',
+    input.typedProps.materialColor ?? '',
+    input.typedProps.lightColor ?? '',
+  );
+  hilog.info(
+    HILOG_DOMAIN,
+    HILOG_TAG,
+    'PaseoMaterial: adopted style=%{public}s tint=%{public}s(js|default=%{public}s) light=%{public}s(js|default=%{public}s) degraded=%{public}s(js|default=%{public}s) interactive=%{public}s applyShadow=%{public}s blur=%{public}d path=%{public}s',
+    input.thickness,
+    input.tint.value ?? defaultTint(input.scheme),
+    input.tint.source,
+    input.light.value ?? defaultLightEffect(input.scheme),
+    input.light.source,
+    input.degraded.value ?? defaultDegradedTint(input.scheme),
+    input.degraded.source,
+    input.interactive,
+    input.applyShadow,
+    input.blurStyle,
+    input.path,
+  );
+}
+
 @Builder
-export function buildPaseoMaterialView(ctx: ComponentBuilderContext) {
+export function buildPaseoMaterialLight(ctx: ComponentBuilderContext) {
   PaseoMaterialView({
     ctx: ctx.rnComponentContext,
     tag: ctx.tag,
+    defaultScheme: 'light',
+  });
+}
+
+@Builder
+export function buildPaseoMaterialDark(ctx: ComponentBuilderContext) {
+  PaseoMaterialView({
+    ctx: ctx.rnComponentContext,
+    tag: ctx.tag,
+    defaultScheme: 'dark',
   });
 }
 
 @Component
 export struct PaseoMaterialView {
-  public static readonly NAME: string = 'PaseoMaterialView';
+  public static readonly LIGHT_NAME: string = 'PaseoMaterialLight';
+  public static readonly DARK_NAME: string = 'PaseoMaterialDark';
   public ctx!: RNComponentContext;
   public tag: number = 0;
+  /**
+   * The tint scheme this component name stands for. It is the one signal left when the props do not
+   * arrive, so it decides the built-in tint.
+   */
+  public defaultScheme: PaseoMaterialScheme = 'light';
   @State private modifier: PaseoMaterialAttributeModifier | undefined = undefined;
   private cleanUpCallbacks: (() => void)[] = [];
+  private materialKey: string = '';
 
   aboutToAppear(): void {
     this.onDescriptorChange(this.ctx.descriptorRegistry.getDescriptor<PaseoMaterialDescriptor>(this.tag));
@@ -221,9 +363,44 @@ export struct PaseoMaterialView {
     if (descriptor === undefined) {
       return;
     }
-    const material = createMaterial(descriptor.rawProps);
-    this.modifier = new PaseoMaterialAttributeModifier(descriptor, material, descriptor.rawProps.degradedColor);
-    logMaterial(descriptor.rawProps, material);
+    const rawProps: PaseoMaterialRawProps = descriptor.rawProps;
+    const typedProps: PaseoMaterialTypedProps = descriptor.props;
+    const thicknessProp = resolveStringProp(typedProps.thickness, rawProps.thickness);
+    const thickness: string = thicknessProp.value ?? DEFAULT_THICKNESS;
+    const tint = resolveStringProp(typedProps.materialColor, rawProps.materialColor);
+    const degraded = resolveStringProp(typedProps.degradedColor, rawProps.degradedColor);
+    const light = resolveStringProp(typedProps.lightColor, rawProps.lightColor);
+    const interactive: boolean = typedProps.interactive ?? rawProps.interactive ?? false;
+    const applyShadow: boolean = typedProps.applyShadow ?? rawProps.applyShadow ?? true;
+    const tintColor: string = tint.value ?? defaultTint(this.defaultScheme);
+    const lightColor: string = light.value ?? defaultLightEffect(this.defaultScheme);
+    const blurStyle: BlurStyle = toBlurStyle(thicknessProp.value);
+    const material = createMaterial(thickness, tintColor, lightColor, interactive, applyShadow);
+    const fillColor: string = material !== undefined
+      ? tintColor
+      : (degraded.value ?? defaultDegradedTint(this.defaultScheme));
+    const key = `${tintColor}|${lightColor}|${fillColor}|${thickness}|${interactive}|${applyShadow}`;
+    this.modifier = new PaseoMaterialAttributeModifier(descriptor, material, fillColor, blurStyle);
+    if (key === this.materialKey) {
+      return;
+    }
+    this.materialKey = key;
+    logMaterial({
+      viewName: this.defaultScheme === 'dark'
+        ? PaseoMaterialView.DARK_NAME
+        : PaseoMaterialView.LIGHT_NAME,
+      scheme: this.defaultScheme,
+      rawProps: rawProps,
+      typedProps: typedProps,
+      thickness: thickness,
+      tint: tint,
+      degraded: degraded,
+      light: light,
+      interactive: interactive,
+      applyShadow: applyShadow,
+      path: material === undefined ? 'degraded' : 'material',
+      blurStyle: blurStyle,
+    });
   }
 
   build() {

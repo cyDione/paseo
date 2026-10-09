@@ -177,9 +177,9 @@ when the system scheme changes.
 ## System material (ArkUI)
 
 The composer card and the pills above it are immersive system materials on HarmonyOS. The material
-is a component attribute (`.systemMaterial()`), so this is ArkTS: `PaseoMaterialView` in the
-`paseo-unistyles` HAR wraps the RN children of a surface in a `Stack` that carries the material.
-JS reaches it through `MaterialView`
+is a component attribute (`.systemMaterial()`), so this is ArkTS: `PaseoMaterialLight` /
+`PaseoMaterialDark` in the `paseo-unistyles` HAR wrap the RN children of a surface in a `Stack` that
+carries the material. JS reaches them through `MaterialView`
 (`packages/app/src/components/ui/material-view.harmony.tsx`), a plain `View` on every other
 platform, so call sites stay unconditional. Decorative use only: the components, the transcript and
 the material rules below are the whole contract.
@@ -196,33 +196,56 @@ use `RNViewBase` — that struct re-applies `layoutMetrics.frame.origin` as a `p
 would offset any node whose origin is not (0, 0). It applies the corner radius (which is what clips
 the material), the border, the border style and the opacity from the descriptor instead.
 
-### The tint must stay translucent
+### The surface is visible without the material and without the props
 
-`materialColor` defaults to `Color.Transparent`, and a fully opaque color blocks the material
-filter — the surface then reads as a flat fill, which is what an unset or opaque tint looked like
-in the first attempts. `components/ui/material-color.ts` produces the tint as `#AARRGGBB`:
-`surface0` at 55% on light themes, `surface1` at 55% on dark, accent at 25%; the light-effect color
-is white at 50% (light) and 25% (dark). All four are feel values, not derived from a token.
+The material is an enhancement, never the only paint. Two things are applied on every path, before
+it:
 
-The RN side must stay transparent for the same reason. `platformChromeMaterialFill`
+- A backdrop blur through `.backgroundBlurStyle()` — the device's own, independent of the material.
+  The material does not blur at every material level (at low computing power it only affects the
+  node's background, border and shadow), so a surface that relied on it alone would show color
+  without blur.
+- A translucent fill through `.backgroundColor()` — the JS tint when it arrived, the component's
+  built-in tint otherwise.
+
+`materialColor` defaults to `Color.Transparent`, and a prop that never arrives leaves the surface
+exactly that: transparent, with nothing behind it. The built-in tints exist for that failure.
+`material-color.ts` sends `surface0` at 55% on light themes and `surface1` at 55% on dark ones; the
+ArkTS side falls back to `#B3FFFFFF` / `#66000000` when it hears nothing at all, and the component
+_name_ carries the scheme, so the fallback is right in both themes even if no prop ever reaches the
+device. Every fill is translucent by construction — a fully opaque color blocks the material filter,
+and the same rule applies to any background set on the container.
+
+The RN side stays transparent for the same reason. `platformChromeMaterialFill`
 (`styles/platform-chrome.harmony.ts`) is `transparent` on HarmonyOS and `null` elsewhere, which
 `composer/pill-styles.ts` and any other material surface reads inside its `StyleSheet.create`; the
 composer card's own entry (`platformChromeStyles.composerCard`) does the same. The card's shadow
 comes from the material (`applyShadow`), not from the theme's `shadow.md`.
 
-### Registration
+### Registration and prop delivery
 
-| Piece                   | Where                                                                                                                                                   |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| RN props contract       | `components/ui/material-view.types.ts`, mirrored by `PaseoMaterialRawProps` in `MaterialView.ets`                                                       |
-| ArkTS component         | `harmony/library/src/main/ets/MaterialView.ets`, registered by `PaseoUnistylesPackage.ets` in `createWrappedCustomRNComponentBuilderByComponentNameMap` |
-| Descriptor, view config | `harmony/library/src/main/cpp/material/`, built into the existing `paseo_unistyles` target                                                              |
+| Piece                                | Where                                                                                                                                                                          |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| RN props contract                    | `components/ui/material-view.types.ts`, mirrored by `PaseoMaterialRawProps` / `PaseoMaterialTypedProps` in `MaterialView.ets`                                                  |
+| ArkTS component                      | `harmony/library/src/main/ets/MaterialView.ets`, registered by `PaseoUnistylesPackage.ets` in `createWrappedCustomRNComponentBuilderByComponentNameMap` (one builder per name) |
+| Descriptor, view config, prop binder | `harmony/library/src/main/cpp/material/`, built into the existing `paseo_unistyles` target                                                                                     |
 
-The C++ side registers a component descriptor and a `ComponentJSIBinder` — without the binder the JS
+The C++ side registers a descriptor and a `ComponentJSIBinder` per name — without the binder the JS
 view config drops the material props before they reach the device — and deliberately no component
 instance: a C++ instance would move the component onto the C-API mounting path, where the ArkTS
-component is never built. Custom props are read from `descriptor.rawProps`; no codegen and no
-`ComponentNapiBinder` are involved.
+component is never built.
+
+There are two prop channels, and the ArkTS side logs which one carried each value:
+
+1. `descriptor.props`, typed, filled by the package's `ComponentNapiBinder` (`MaterialRegistration.cpp`)
+   and parsed in `PaseoMaterialViewProps` through `convertRawProp`.
+2. `descriptor.rawProps`, the generic copy RNOH attaches to every mutation
+   (`MutationsToNapiConverter.cpp`), which needs no binder.
+
+Neither is trusted alone: `MaterialView.ets` prefers the typed copy, falls back to `rawProps`, then
+to its built-in default, and prints the raw values, the typed values and the adopted value with its
+source. A prop that only ever travels on one channel, or on neither, is visible in the log instead
+of turning into a silent default.
 
 ### Application-level switch
 
@@ -242,11 +265,11 @@ compiler's own suggestion (`deviceInfo.apiAvailable`) is too new to be. Older de
 degraded path instead of touching the module.
 
 `uiMaterial.isImmersiveMaterialSupported()` gates the material per component on top of that. When
-it is false the view falls back to `BlurStyle.Thin` plus a translucent fill, which is a tinted
-backdrop blur rather than a system material. `getGlobalMaterialLevel()` reports how much the device
-can do at all, and the material has different effects per level: at `SMOOTH` it drives the node's
-background, border and shadow; at `EXQUISITE` and `GENTLE` it adds the filter, light and shadow
-over them.
+it is false the material is simply not created (`path=degraded` in the log) and the blur plus fill
+described above are all the surface gets. `getGlobalMaterialLevel()` reports how much the device can
+do at all, and the material has different effects per level: at `SMOOTH` it drives the node's
+background, border and shadow — but does not blur, which is why the backdrop blur is applied
+unconditionally; at `EXQUISITE` and `GENTLE` it adds the filter, light and shadow over the fill.
 
 Two tints are on by default and are meant to be turned off (or deleted with their constants) once
 the material is verified on a device:
@@ -260,13 +283,21 @@ the material is verified on a device:
 `hdc hilog | grep PaseoMaterial` prints one line per material change:
 
 ```
-PaseoMaterial: supported=true level=0 state=1 api=26 style=regular path=material
-PaseoMaterial: supported=false level=2 state=1 api=26 style=thin path=degraded
+PaseoMaterial: view=PaseoMaterialLight scheme=light api=26 supported=true level=0 state=1
+PaseoMaterial: raw props thickness=regular materialColor=#8CFFFFFF lightColor=#80FFFFFF interactive=true applyShadow=true
+PaseoMaterial: typed props thickness=regular materialColor=#8CFFFFFF lightColor=#80FFFFFF
+PaseoMaterial: adopted style=regular tint=#8CFFFFFF(js|default=props) light=#80FFFFFF(js|default=props) degraded=#8CFFE7CC(js|default=props) interactive=true applyShadow=true blur=1 path=material
 ```
 
-`path=material` means the material was created and set; `path=degraded` means it was not.
-`state=` is what ArkUI resolved from the metadata above, `level=` the device's material level and
-`api=` its SDK version; `level` and `state` read -1 when the APIs do not exist on the system.
+The first line is the device: `view`/`scheme` is the component name that was built, `api=` its SDK
+version (the guard behind it, see above), `supported=`/`level=`/`state=` the material support,
+computing level and — `state=1` — that ArkUI read the metadata key from the section below. `level`
+and `state` read `-1` when the material APIs do not exist on the system.
+
+The next two lines are the two prop channels verbatim, and the last line is what was adopted: the
+`js|default=` fields name the channel each value came from (`props`, `rawProps`, or `default` for
+the built-in tint). `path=material` means the material was created and set; `path=degraded` means it
+was not, and only the blur and fill paint.
 
 ### The floating composer
 

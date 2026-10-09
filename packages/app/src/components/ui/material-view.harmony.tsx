@@ -25,14 +25,20 @@ import {
 } from "./material-color";
 import type { MaterialThickness, MaterialTone, MaterialViewProps } from "./material-view.types";
 
-/** Registered by the `paseo-unistyles` HAR (cpp/material/MaterialRegistration.cpp). Keep in sync. */
-const NATIVE_MATERIAL_VIEW_NAME = "PaseoMaterialView";
+/**
+ * Registered by the `paseo-unistyles` HAR (cpp/material/MaterialRegistration.cpp). Keep in sync.
+ * The scheme is part of the name on purpose: a component name is the one input that reaches ArkTS
+ * without going through props, and the ArkTS side falls back to a built-in light/dark tint when the
+ * colors below never arrive.
+ */
+const NATIVE_MATERIAL_LIGHT_NAME = "PaseoMaterialLight";
+const NATIVE_MATERIAL_DARK_NAME = "PaseoMaterialDark";
 
 /**
  * Diagnostic-only, and deliberately not exported: a build that never registered the native view
- * paints red instead of silently rendering flat, so a screenshot answers the question. Orange
- * (the native degrade fill) means the device has no immersive material and the surface fell back
- * to a tinted backdrop blur. Turn both off once the material is verified on a device.
+ * paints red instead of silently rendering flat, so a screenshot answers the question. Orange (the
+ * native degrade fill) means the device has no immersive material and the surface fell back to a
+ * tinted backdrop blur. Turn both off once the material is verified on a device.
  */
 const MATERIAL_DIAGNOSTIC_TINTS: boolean = true;
 
@@ -40,9 +46,9 @@ const MATERIAL_DIAGNOSTIC_TINTS: boolean = true;
 const MISSING_VIEW_TINT: ViewStyle = { backgroundColor: "rgba(255, 0, 0, 0.25)" };
 
 /**
- * The material props the native `PaseoMaterialView` reads from `descriptor.rawProps`. The view is
- * hand-registered, so this interface — plus `PaseoMaterialJSIBinder` on the native side — is the
- * contract; there is no generated spec to import. Colors are `#AARRGGBB` strings.
+ * The material props the native views read from `descriptor.props` (the `ComponentNapiBinder`
+ * channel) and `descriptor.rawProps` (the generic one). Colors are `#AARRGGBB` strings; the ArkTS
+ * side logs which channel carried each one and uses its built-in tint when neither did.
  */
 interface NativeMaterialViewProps extends ViewProps {
   thickness?: MaterialThickness;
@@ -53,22 +59,64 @@ interface NativeMaterialViewProps extends ViewProps {
   applyShadow?: boolean;
 }
 
-const NativeMaterialView: HostComponent<NativeMaterialViewProps> =
-  codegenNativeComponent<NativeMaterialViewProps>(NATIVE_MATERIAL_VIEW_NAME);
+const NativeMaterialLight: HostComponent<NativeMaterialViewProps> =
+  codegenNativeComponent<NativeMaterialViewProps>(NATIVE_MATERIAL_LIGHT_NAME);
+const NativeMaterialDark: HostComponent<NativeMaterialViewProps> =
+  codegenNativeComponent<NativeMaterialViewProps>(NATIVE_MATERIAL_DARK_NAME);
+
+const NATIVE_MATERIAL_BY_SCHEME: Record<
+  "light" | "dark",
+  HostComponent<NativeMaterialViewProps>
+> = {
+  light: NativeMaterialLight,
+  dark: NativeMaterialDark,
+};
+
+interface MaterialSurfaceProps extends NativeMaterialViewProps {
+  /** Comes from the theme through the same mapping as the colors, so the name follows the theme. */
+  colorScheme?: "light" | "dark";
+}
 
 /**
- * The theme-to-material mapping rides on `uniProps`, the theme-aware prop lane of
- * `withUnistyles`: the closure sees `tone` and `lightEffect`, and the wrapper — not the surface
- * that hosts it — re-renders when the theme or color scheme changes. The corner radius is not
- * sent: the ArkTS side clips the material to the RN style's own `borderRadius`.
+ * Picks the native variant for the scheme. This indirection exists so the choice is reactive: the
+ * `withUnistyles` wrapper below re-renders it when the theme changes, which a plain read of the
+ * runtime would not.
  */
-const ThemedMaterialView = withUnistyles(NativeMaterialView);
+const MaterialSurface = forwardRef(function MaterialSurface(
+  {
+    colorScheme = "light",
+    thickness = "regular",
+    interactive = false,
+    applyShadow = false,
+    ...nativeProps
+  }: MaterialSurfaceProps,
+  ref: Ref<View>,
+): ReactElement {
+  const NativeMaterial = NATIVE_MATERIAL_BY_SCHEME[colorScheme];
+  return (
+    <NativeMaterial
+      ref={ref}
+      thickness={thickness}
+      interactive={interactive}
+      applyShadow={applyShadow}
+      {...nativeProps}
+    />
+  );
+});
+
+/**
+ * The theme-to-material mapping rides on `uniProps`, the theme-aware prop lane of `withUnistyles`:
+ * the closure sees `tone` and `lightEffect`, and the wrapper — not the surface that hosts it —
+ * re-renders when the theme or color scheme changes. The corner radius is not sent: the ArkTS side
+ * clips the material to the RN style's own `borderRadius`.
+ */
+const ThemedMaterialSurface = withUnistyles(MaterialSurface);
 
 function resolveMaterialProps(
   theme: Theme,
   tone: MaterialTone,
   lightEffect: boolean,
-): Partial<NativeMaterialViewProps> {
+): Partial<MaterialSurfaceProps> {
   const materialColor = materialTintColor({
     tone,
     scheme: theme.colorScheme,
@@ -77,8 +125,9 @@ function resolveMaterialProps(
     accent: theme.colors.accent,
   });
   return {
-    // Leaving the color unset keeps the material's transparent default; only reachable if a
-    // theme token stops being a hex color.
+    colorScheme: theme.colorScheme,
+    // Absent means the ArkTS side keeps its built-in tint, which is why the failure is visible
+    // rather than a transparent surface. Only reachable if a theme token stops being a hex color.
     materialColor: materialColor ?? undefined,
     degradedColor: materialDegradedFillColor(materialColor) ?? undefined,
     lightColor: lightEffect ? materialLightEffectColor(theme.colorScheme) : undefined,
@@ -142,7 +191,7 @@ export const MaterialView = forwardRef(function MaterialView(
   );
   return (
     <MaterialViewFailureBoundary style={style} viewProps={props} hostRef={ref}>
-      <ThemedMaterialView
+      <ThemedMaterialSurface
         ref={ref}
         style={style}
         thickness={thickness}
@@ -152,7 +201,7 @@ export const MaterialView = forwardRef(function MaterialView(
         {...props}
       >
         {children}
-      </ThemedMaterialView>
+      </ThemedMaterialSurface>
     </MaterialViewFailureBoundary>
   );
 });

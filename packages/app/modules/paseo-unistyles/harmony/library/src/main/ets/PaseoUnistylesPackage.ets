@@ -1,6 +1,6 @@
 import { ComponentBuilderContext, RNOHPackage, TurboModulesFactory, TurboModule, TurboModuleContext }
   from '@rnoh/react-native-openharmony';
-import { buildPaseoMaterialView, PaseoMaterialView } from './MaterialView';
+import { buildPaseoMaterialDark, buildPaseoMaterialLight, PaseoMaterialView } from './MaterialView';
 
 interface WindowInsets {
   top: number;
@@ -67,11 +67,14 @@ export class PaseoUnistylesPackage extends RNOHPackage {
     return new UnistylesFactory(ctx);
   }
 
-  // The ArkTS side of the material view. C++ registers only its descriptor and view config
-  // (cpp/material/MaterialRegistration.cpp), so the mounting manager builds this component.
+  // The ArkTS side of the material view. C++ registers only descriptors and binders
+  // (cpp/material/MaterialRegistration.cpp), so the mounting manager builds these components. The
+  // two names are the light/dark variants: the component name selects the built-in tint when the
+  // JS color does not arrive.
   override createWrappedCustomRNComponentBuilderByComponentNameMap():
     Map<string, WrappedBuilder<[ComponentBuilderContext]>> {
     return new Map<string, WrappedBuilder<[ComponentBuilderContext]>>()
-      .set(PaseoMaterialView.NAME, wrapBuilder(buildPaseoMaterialView));
+      .set(PaseoMaterialView.LIGHT_NAME, wrapBuilder(buildPaseoMaterialLight))
+      .set(PaseoMaterialView.DARK_NAME, wrapBuilder(buildPaseoMaterialDark));
   }
 }

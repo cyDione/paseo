@@ -7,14 +7,10 @@
 #include <react/renderer/componentregistry/ComponentDescriptorProvider.h>
 #include <react/renderer/core/ConcreteComponentDescriptor.h>
 
+#include "RNOH/ArkJS.h"
+#include "RNOH/BaseComponentNapiBinder.h"
 #include "RNOHCorePackage/ComponentBinders/ViewComponentJSIBinder.h"
 #include "material/PaseoMaterialViewShadowNodes.h"
-
-namespace facebook {
-namespace react {
-const char PaseoMaterialViewName[] = "PaseoMaterialView";
-} // namespace react
-} // namespace facebook
 
 namespace rnoh {
 namespace paseo_material {
@@ -23,8 +19,9 @@ namespace {
 
 /**
  * The JS view config is built from `createNativeProps`, and the Fabric renderer drops every prop
- * that is not listed there. Without these entries the material props never reach the descriptor
- * and the view silently keeps its defaults.
+ * that is not listed there (`ReactNativeAttributePayload` filters by `validAttributes`). Without
+ * these entries the material props never reach the descriptor and the view silently keeps its
+ * defaults.
  *
  * Scalar type names without a processor ("string", "boolean") pass the value through untouched:
  * colors travel as `#AARRGGBB` strings, which ArkUI's `ResourceColor` accepts directly.
@@ -43,24 +40,60 @@ class PaseoMaterialJSIBinder : public ViewComponentJSIBinder {
   }
 };
 
-class PaseoMaterialViewComponentDescriptor final
-    : public facebook::react::ConcreteComponentDescriptor<
-          facebook::react::PaseoMaterialViewShadowNode> {
+/**
+ * Second delivery channel. `descriptor.props` reaches ArkTS through this binder, `descriptor.rawProps`
+ * through `MutationsToNapiConverter` regardless of any binder. The ArkTS component reads the typed
+ * copy first and reports which channel carried the value, so a prop that only ever arrives on one of
+ * them shows up in the log instead of turning into a silent default.
+ */
+class PaseoMaterialNapiBinder : public BaseComponentNapiBinder {
  public:
-  explicit PaseoMaterialViewComponentDescriptor(
+  napi_value createProps(napi_env env, facebook::react::ShadowView const shadowView) override {
+    auto propsBuilder = ArkJS(env).createObjectBuilder();
+    if (auto props = std::dynamic_pointer_cast<const facebook::react::PaseoMaterialViewProps>(
+            shadowView.props)) {
+      propsBuilder.addProperty("thickness", props->thickness)
+          .addProperty("materialColor", props->materialColor)
+          .addProperty("degradedColor", props->degradedColor)
+          .addProperty("lightColor", props->lightColor)
+          .addProperty("interactive", props->interactive)
+          .addProperty("applyShadow", props->applyShadow);
+    }
+    return propsBuilder.build();
+  }
+};
+
+template <typename ShadowNodeT>
+class PaseoMaterialComponentDescriptor final
+    : public facebook::react::ConcreteComponentDescriptor<ShadowNodeT> {
+ public:
+  explicit PaseoMaterialComponentDescriptor(
       const facebook::react::ComponentDescriptorParameters &parameters)
-      : ConcreteComponentDescriptor(parameters) {}
+      : ConcreteComponentDescriptor<ShadowNodeT>(parameters) {}
 };
 
 } // namespace
 
 std::vector<facebook::react::ComponentDescriptorProvider> createComponentDescriptorProviders() {
   using namespace facebook::react;
-  return {concreteComponentDescriptorProvider<PaseoMaterialViewComponentDescriptor>()};
+  return {
+      concreteComponentDescriptorProvider<PaseoMaterialComponentDescriptor<PaseoMaterialLightShadowNode>>(),
+      concreteComponentDescriptorProvider<PaseoMaterialComponentDescriptor<PaseoMaterialDarkShadowNode>>(),
+  };
 }
 
 ComponentJSIBinderByString createComponentJSIBinderByName() {
-  return {{facebook::react::PaseoMaterialViewName, std::make_shared<PaseoMaterialJSIBinder>()}};
+  return {
+      {facebook::react::PaseoMaterialLightName, std::make_shared<PaseoMaterialJSIBinder>()},
+      {facebook::react::PaseoMaterialDarkName, std::make_shared<PaseoMaterialJSIBinder>()},
+  };
+}
+
+ComponentNapiBinderByString createComponentNapiBinderByName() {
+  return {
+      {facebook::react::PaseoMaterialLightName, std::make_shared<PaseoMaterialNapiBinder>()},
+      {facebook::react::PaseoMaterialDarkName, std::make_shared<PaseoMaterialNapiBinder>()},
+  };
 }
 
 } // namespace paseo_material

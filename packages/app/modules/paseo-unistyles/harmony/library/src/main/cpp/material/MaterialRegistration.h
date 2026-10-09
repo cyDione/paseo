@@ -9,6 +9,7 @@ namespace paseo_material {
 // it has no HAR of its own yet.
 std::vector<facebook::react::ComponentDescriptorProvider> createComponentDescriptorProviders();
 ComponentJSIBinderByString createComponentJSIBinderByName();
+ComponentNapiBinderByString createComponentNapiBinderByName();
 
 } // namespace paseo_material
 } // namespace rnoh
