@@ -236,11 +236,17 @@ below — is how you confirm the system read it.
 
 ### Degradation and diagnostics
 
-`uiMaterial.isImmersiveMaterialSupported()` gates the material per component. When it is false the
-view falls back to `BlurStyle.Thin` plus a translucent fill, which is a tinted backdrop blur rather
-than a system material. `getGlobalMaterialLevel()` reports how much the device can do at all, and
-the material has different effects per level: at `SMOOTH` it drives the node's background, border
-and shadow; at `EXQUISITE` and `GENTLE` it adds the filter, light and shadow over them.
+Every `uiMaterial` API is `@since 26.0.0` while the app's compatible SDK version is 23, so ArkTS
+warns on each use and the component gates on `deviceInfo.sdkApiVersion >= 26` — the probe the
+compiler's own suggestion (`deviceInfo.apiAvailable`) is too new to be. Older devices take the
+degraded path instead of touching the module.
+
+`uiMaterial.isImmersiveMaterialSupported()` gates the material per component on top of that. When
+it is false the view falls back to `BlurStyle.Thin` plus a translucent fill, which is a tinted
+backdrop blur rather than a system material. `getGlobalMaterialLevel()` reports how much the device
+can do at all, and the material has different effects per level: at `SMOOTH` it drives the node's
+background, border and shadow; at `EXQUISITE` and `GENTLE` it adds the filter, light and shadow
+over them.
 
 Two tints are on by default and are meant to be turned off (or deleted with their constants) once
 the material is verified on a device:
@@ -254,12 +260,13 @@ the material is verified on a device:
 `hdc hilog | grep PaseoMaterial` prints one line per material change:
 
 ```
-PaseoMaterial: supported=true level=0 state=1 style=regular path=material
-PaseoMaterial: supported=false level=2 state=1 style=thin path=degraded
+PaseoMaterial: supported=true level=0 state=1 api=26 style=regular path=material
+PaseoMaterial: supported=false level=2 state=1 api=26 style=thin path=degraded
 ```
 
-`path=material` means the material was created and set; `path=degraded` means the device has no
-immersive material. `state=` is what ArkUI resolved from the metadata above.
+`path=material` means the material was created and set; `path=degraded` means it was not.
+`state=` is what ArkUI resolved from the metadata above, `level=` the device's material level and
+`api=` its SDK version; `level` and `state` read -1 when the APIs do not exist on the system.
 
 ### The floating composer
 

@@ -12,6 +12,7 @@
  * start at (0, 0). It applies the view properties the material surfaces need (corner radius,
  * border, opacity) from the descriptor instead.
  */
+import deviceInfo from '@ohos.deviceInfo';
 import hilog from '@ohos.hilog';
 import uiMaterial from '@ohos.arkui.uiMaterial';
 import { ComponentBuilderContext, RNComponentContext } from '@rnoh/react-native-openharmony';
@@ -24,6 +25,19 @@ import {
 
 const HILOG_DOMAIN: number = 0xA100;
 const HILOG_TAG: string = 'PaseoMaterial';
+
+/**
+ * Every `uiMaterial` API is `@since 26.0.0` while the app's compatible SDK version is 23, so the
+ * module and its members may be absent at runtime. `deviceInfo.sdkApiVersion` is the only version
+ * probe that exists on those devices; the compiler's own suggestion (`deviceInfo.apiAvailable`)
+ * is itself an API 26 API.
+ */
+const MATERIAL_API_VERSION: number = 26;
+const UNAVAILABLE_METRIC: number = -1;
+
+function isMaterialApiAvailable(): boolean {
+  return deviceInfo.sdkApiVersion >= MATERIAL_API_VERSION;
+}
 
 /** Raw props sent by `material-view.harmony.tsx`. Colors are `#AARRGGBB` strings. */
 export interface PaseoMaterialRawProps extends ViewRawProps {
@@ -59,7 +73,7 @@ function toImmersiveStyle(thickness: string | undefined): uiMaterial.ImmersiveSt
  * caller then paints `degradedColor` over a backdrop blur.
  */
 function createMaterial(rawProps: PaseoMaterialRawProps): uiMaterial.Material | undefined {
-  if (!uiMaterial.isImmersiveMaterialSupported()) {
+  if (!isMaterialApiAvailable() || !uiMaterial.isImmersiveMaterialSupported()) {
     return undefined;
   }
   const options: uiMaterial.ImmersiveOptions = {
@@ -78,16 +92,23 @@ function createMaterial(rawProps: PaseoMaterialRawProps): uiMaterial.Material | 
   return new uiMaterial.ImmersiveMaterial(options);
 }
 
-/** One line per material change: the device's material support and the path this view took. */
+/**
+ * One line per material change: the device's support, how much it can do and the path this view
+ * took. `level` and `state` are -1 when the material APIs do not exist on this system at all.
+ */
 function logMaterial(rawProps: PaseoMaterialRawProps, material: uiMaterial.Material | undefined): void {
-  const info: uiMaterial.MaterialInfo = uiMaterial.getMaterialInfo();
+  const apiAvailable: boolean = isMaterialApiAvailable();
+  const supported: boolean = apiAvailable && uiMaterial.isImmersiveMaterialSupported();
+  const level: number = apiAvailable ? uiMaterial.getGlobalMaterialLevel() : UNAVAILABLE_METRIC;
+  const state: number = apiAvailable ? uiMaterial.getMaterialInfo().state : UNAVAILABLE_METRIC;
   hilog.info(
     HILOG_DOMAIN,
     HILOG_TAG,
-    'PaseoMaterial: supported=%{public}s level=%{public}d state=%{public}d style=%{public}s path=%{public}s',
-    uiMaterial.isImmersiveMaterialSupported(),
-    uiMaterial.getGlobalMaterialLevel(),
-    info.state,
+    'PaseoMaterial: supported=%{public}s level=%{public}d state=%{public}d api=%{public}d style=%{public}s path=%{public}s',
+    supported,
+    level,
+    state,
+    deviceInfo.sdkApiVersion,
     rawProps.thickness ?? 'regular',
     material === undefined ? 'degraded' : 'material',
   );
