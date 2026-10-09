@@ -174,6 +174,32 @@ effective color scheme from the contributed theme or the theme preference, with
 `auto` following the system scheme, and calls `StatusBar.setBarStyle`. It re-runs
 when the system scheme changes.
 
+## System material glass layer
+
+`PaseoGlassThin`, `PaseoGlassRegular` and `PaseoGlassThick` are Fabric views that
+apply the API 26 immersive system material (`NODE_SYSTEM_MATERIAL`). JS reaches
+them through `GlassLayer` (`packages/app/src/components/ui/glass-layer.*`), a
+no-op on every other platform, so call sites stay unconditional. Both current
+call sites — the circular header icon buttons and the composer card — set their
+own `backgroundColor` to `transparent` in `platform-chrome.harmony.ts`, otherwise
+the fill covers the material.
+
+The native sources live in the `paseo-unistyles` HAR (`cpp/glass/`) because the
+view has no HAR of its own yet; give it one if the material is kept. The material
+APIs are introduced in API 26 while the app supports API 23, so
+`GlassStackNode.cpp` resolves them from `libace_ndk.z.so` with
+`dlopen`/`dlsym` at runtime. Linking them directly would make
+`libpaseo_unistyles.so` unloadable on older system images. The same file is the
+place to extend the material (light effect, material color); failures there log
+and degrade, they never throw.
+
+When the symbols, the device support flag or the `setAttribute` result refuse the
+material, the view falls back to `NODE_BACKDROP_BLUR`. `hdc hilog | grep
+PaseoGlass` prints one line per glass view with the support flag, the device
+material level, the style, the `setAttribute` status and the degradation reason.
+The JS layer is wrapped in an error boundary, so a HAP that skipped the native
+registration renders nothing instead of failing the surface.
+
 ## Foldable and split-window behavior
 
 Follow Huawei's [cross-device application development rules](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-cross-device-app-dev).
