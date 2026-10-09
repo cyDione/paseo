@@ -179,26 +179,79 @@ when the system scheme changes.
 `PaseoGlassThin`, `PaseoGlassRegular` and `PaseoGlassThick` are Fabric views that
 apply the API 26 immersive system material (`NODE_SYSTEM_MATERIAL`). JS reaches
 them through `GlassLayer` (`packages/app/src/components/ui/glass-layer.*`), a
-no-op on every other platform, so call sites stay unconditional. Both current
-call sites — the circular header icon buttons and the composer card — set their
-own `backgroundColor` to `transparent` in `platform-chrome.harmony.ts`, otherwise
-the fill covers the material.
+no-op on every other platform, so call sites stay unconditional. The layer is
+absolutely positioned under the surface's content, takes no part in layout and
+drops pointer events, so a surface only has to give it the same corner radius and
+an empty fill.
+
+### The material needs a color to be visible
+
+`OH_ArkUI_NativeModule_ImmersiveMaterial_Create` on its own produces something you
+cannot see. `native_material.h` states that an unset material color is transparent
+at the EXQUISITE and GENTLE device levels, and only SMOOTH devices substitute a
+default background color — a material without `SetMaterialColor` is an invisible
+sheet over whatever the app drew. That is why the first version of this layer
+showed nothing. A material keeps the values it was created with, so the other
+knobs are set in the same pass: `SetApplyShadow` (material shadow, which takes
+precedence over the general shadow property), `SetInteractive` (press response) and
+the light effect (`LightEffectOptions_Create` → `_SetColor` → `SetLightEffect`).
+
+`PaseoGlassProps` (`cpp/glass/GlassShadowNodes.*`) carries `materialColor`,
+`lightColor` (0 disables the light effect), `interactive` and `applyShadow` as raw
+props; the components are hand-registered, so nothing reads a generated spec. The
+colors travel as signed 32-bit ints holding 0xAARRGGBB bits because `RawValue` only
+casts to `int`: JS applies `| 0` and the native side casts back to `uint32_t`.
+`GlassComponentInstance::onPropsChanged` rebuilds the material from that props set
+and skips the work when none of the four values changed.
+
+Tints are derived from theme tokens in a `withUnistyles` mapper
+(`glass-layer.harmony.tsx`) and computed in `components/ui/glass-color.ts`: light
+themes use `surface0` at 55% alpha, dark themes `surface1` at 55%, `tone="accent"`
+swaps in the accent token at 25%, and the light effect is white at 50% (light) or
+25% (dark). Only the light-effect white is a literal; unit tests pin the alpha byte
+and the scheme mapping.
+
+### Where the layer sits
+
+| Surface                                                          | Thickness | Fill override                                               |
+| ---------------------------------------------------------------- | --------- | ----------------------------------------------------------- |
+| Circular header icon buttons                                     | `regular` | `platformChromeStyles.headerButton`                         |
+| Composer card                                                    | `regular` | `platformChromeStyles.composerCard`                         |
+| `AdaptiveModalSheet` compact sheet background and desktop card   | `thick`   | `platformChromeGlassFill`, `platformChromeStyles.modalCard` |
+| Menu popovers (`menu-overlay.tsx`, `combobox.tsx` desktop panel) | `regular` | `platformChromeStyles.menuPanel`                            |
+| Menu and combobox compact sheets                                 | `regular` | `platformChromeGlassFill`                                   |
+| Compact left sidebar drawer                                      | `thick`   | `platformChromeGlassFill`                                   |
+
+Every surface has to hand its own fill to the layer; an opaque `backgroundColor`
+covers the material. `platformChromeStyles` entries are for ordinary views, while
+the bottom-sheet backgrounds and the drawer are Reanimated `Animated.View`s and
+take the plain `platformChromeGlassFill` object instead, because a registered style
+on those nodes can crash on theme change ([Unistyles gotchas](unistyles.md)).
+`GLASS_LAYER_ENABLED` is exported by `glass-layer.tsx` (false) and
+`glass-layer.harmony.tsx` (true) for the one case where a shared call site has to
+render differently on Harmony — `header-toggle-button.tsx` wraps its children in a
+state function only there.
+
+### Failure and logging
 
 The native sources live in the `paseo-unistyles` HAR (`cpp/glass/`) because the
 view has no HAR of its own yet; give it one if the material is kept. The material
-APIs are introduced in API 26 while the app supports API 23, so
-`GlassStackNode.cpp` resolves them from `libace_ndk.z.so` with
-`dlopen`/`dlsym` at runtime. Linking them directly would make
-`libpaseo_unistyles.so` unloadable on older system images. The same file is the
-place to extend the material (light effect, material color); failures there log
-and degrade, they never throw.
+APIs are introduced in API 26 while the app supports API 23, so `GlassStackNode.cpp`
+resolves every one of them from `libace_ndk.z.so` with `dlopen`/`dlsym` at runtime.
+Linking them directly would make `libpaseo_unistyles.so` unloadable on older system
+images. A missing symbol skips that knob and logs it; if `SetMaterialColor` itself is
+missing or rejects the color, the material cannot be visible and the view degrades
+instead. That fallback is `NODE_BACKDROP_BLUR` plus `NODE_BACKGROUND_COLOR` set to
+the same material color, so a degraded layer still reads as tinted frosted glass
+rather than disappearing again. The JS layer is wrapped in an error boundary, so a
+HAP that skipped the native registration renders nothing instead of failing the
+surface. Nothing here throws or aborts.
 
-When the symbols, the device support flag or the `setAttribute` result refuse the
-material, the view falls back to `NODE_BACKDROP_BLUR`. `hdc hilog | grep
-PaseoGlass` prints one line per glass view with the support flag, the device
-material level, the style, the `setAttribute` status and the degradation reason.
-The JS layer is wrapped in an error boundary, so a HAP that skipped the native
-registration renders nothing instead of failing the surface.
+`hdc hilog | grep PaseoGlass` prints the support flag, the device material level, the
+style and the requested values, the return code of each knob (`SetMaterialColor`,
+`SetApplyShadow`, `SetInteractive`, `LightEffectOptions_SetColor`, `SetLightEffect`),
+the `setAttribute(NODE_SYSTEM_MATERIAL)` status, the degradation reason when one was
+taken, and the live glass view count on create and destroy.
 
 ## Foldable and split-window behavior
 
