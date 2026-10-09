@@ -22,6 +22,9 @@ import {
 import { Keyframe, runOnJS } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
+import { GlassLayer } from "@/components/ui/glass-layer";
+import { BORDER_RADIUS } from "@/styles/theme";
+import { platformChromeStyles } from "@/styles/platform-chrome";
 import { isWeb } from "@/constants/platform";
 import type { KeyboardFocusScope } from "@/keyboard/actions";
 import {
@@ -42,6 +45,8 @@ import {
 
 const SCROLL_CONTENT_STYLE = { flexGrow: 1 } as const;
 const CONTENT_ENTERING_DURATION_MS = 150;
+// Clips the material to the popover's radius (styles.content).
+const GLASS_PANEL_STYLE = { borderRadius: BORDER_RADIUS.lg };
 
 const contentEntering = new Keyframe({
   0: { opacity: 0, transform: [{ scale: 0.97 }] },
@@ -385,7 +390,7 @@ export function AnchoredSurface({
         nativeID={surfaceNativeID}
         testID={testID}
         dataSet={surfaceDataSet}
-        style={styles.content}
+        style={[styles.content, platformChromeStyles.menuPanel]}
         frameStyle={frameStyle}
         entering={placed ? contentEntering : undefined}
         exiting={
@@ -399,6 +404,7 @@ export function AnchoredSurface({
               })
         }
       >
+        <GlassLayer thickness="regular" style={GLASS_PANEL_STYLE} />
         {scrollable ? (
           <FloatingScrollView
             bounces={false}

@@ -59,6 +59,9 @@ import {
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
 import { FloatingSurface } from "@/components/ui/floating";
+import { GlassLayer } from "@/components/ui/glass-layer";
+import { BORDER_RADIUS } from "@/styles/theme";
+import { platformChromeGlassFill, platformChromeStyles } from "@/styles/platform-chrome";
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 import {
   getOverlayRoot,
@@ -71,6 +74,14 @@ import { buildDesktopFrameStyle } from "./combobox-frame-style";
 export { buildDesktopFrameStyle } from "./combobox-frame-style";
 
 const IS_WEB = isWeb;
+
+// Clip the material to the surfaces it fills: the desktop popover (styles.desktopContainer)
+// and the compact sheet's top corners (ComboboxSheetBackground).
+const GLASS_POPOVER_STYLE = { borderRadius: BORDER_RADIUS.lg };
+const GLASS_SHEET_STYLE = {
+  borderTopLeftRadius: BORDER_RADIUS["2xl"],
+  borderTopRightRadius: BORDER_RADIUS["2xl"],
+};
 
 export type ComboboxOption = ComboboxOptionModel;
 export type ComboboxDesktopPlacement = "top-start" | "bottom-start";
@@ -167,11 +178,16 @@ function ComboboxSheetBackground({ style }: BottomSheetBackgroundProps) {
         borderTopLeftRadius: theme.borderRadius["2xl"],
         borderTopRightRadius: theme.borderRadius["2xl"],
       },
+      platformChromeGlassFill,
     ],
     [style, theme.colors.surface0, theme.borderRadius],
   );
 
-  return <Animated.View pointerEvents="none" style={combinedStyle} />;
+  return (
+    <Animated.View pointerEvents="none" style={combinedStyle}>
+      <GlassLayer thickness="regular" style={GLASS_SHEET_STYLE} />
+    </Animated.View>
+  );
 }
 
 export interface SearchInputProps {
@@ -1194,7 +1210,7 @@ function DesktopComboboxBody(props: DesktopBodyProps): ReactElement {
           testID="combobox-desktop-container"
           entering={props.shouldUseDesktopFade ? FadeIn.duration(100) : undefined}
           exiting={props.shouldUseDesktopFade ? FadeOut.duration(100) : undefined}
-          style={styles.desktopContainer}
+          style={[styles.desktopContainer, platformChromeStyles.menuPanel]}
           frameStyle={props.desktopFrameStyle}
           ref={setFloatingRef}
           collapsable={false}
@@ -1203,6 +1219,7 @@ function DesktopComboboxBody(props: DesktopBodyProps): ReactElement {
           tabIndex={-1}
           onLayout={props.handleDesktopContentLayout}
         >
+          <GlassLayer thickness="regular" style={GLASS_POPOVER_STYLE} />
           {props.hasChildren ? (
             <DesktopComboboxChildrenBody
               header={props.header}

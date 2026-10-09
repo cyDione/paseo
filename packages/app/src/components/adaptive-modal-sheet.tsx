@@ -33,6 +33,9 @@ import { isWeb } from "@/constants/platform";
 import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AdaptiveTextInput } from "@/components/adaptive-text-input";
+import { GlassLayer } from "@/components/ui/glass-layer";
+import { BORDER_RADIUS } from "@/styles/theme";
+import { platformChromeGlassFill, platformChromeStyles } from "@/styles/platform-chrome";
 export { AdaptiveTextInput, type AdaptiveTextInputProps } from "@/components/adaptive-text-input";
 
 // Horizontal indent token shared by the sheet header (title, back arrow,
@@ -74,6 +77,13 @@ export interface SheetHeader {
 const SCROLL_CONTENT_GROW = { flexGrow: 1 };
 const ABSOLUTE_FILL_STYLE = { ...StyleSheet.absoluteFillObject };
 const NATIVE_DIALOG_SNAP_POINTS = ["100%"];
+// The glass layers clip to the surfaces they fill: the compact sheet's top corners and the
+// desktop card (styles.desktopCard).
+const GLASS_SHEET_STYLE: ViewStyle = {
+  borderTopLeftRadius: BORDER_RADIUS["2xl"],
+  borderTopRightRadius: BORDER_RADIUS["2xl"],
+};
+const GLASS_CARD_STYLE: ViewStyle = { borderRadius: BORDER_RADIUS.xl };
 
 const styles = StyleSheet.create((theme) => ({
   nativeDialogSurface: {
@@ -243,10 +253,15 @@ function SheetBackground({ style }: BottomSheetBackgroundProps) {
         borderTopLeftRadius: theme.borderRadius["2xl"],
         borderTopRightRadius: theme.borderRadius["2xl"],
       },
+      platformChromeGlassFill,
     ],
     [style, theme.colors.surface0, theme.borderRadius],
   );
-  return <Animated.View pointerEvents="none" style={combinedStyle} />;
+  return (
+    <Animated.View pointerEvents="none" style={combinedStyle}>
+      <GlassLayer thickness="thick" style={GLASS_SHEET_STYLE} />
+    </Animated.View>
+  );
 }
 
 /**
@@ -552,6 +567,7 @@ export function AdaptiveModalSheet({
   const desktopCardStyle = useMemo(
     () => [
       styles.desktopCard,
+      platformChromeStyles.modalCard,
       desktopHeight != null && { height: desktopHeight },
       desktopMaxWidth != null && { maxWidth: desktopMaxWidth },
     ],
@@ -696,6 +712,7 @@ export function AdaptiveModalSheet({
         aria-modal
         tabIndex={-1}
       >
+        <GlassLayer thickness="thick" style={GLASS_CARD_STYLE} />
         {cardInner}
       </View>
     </View>

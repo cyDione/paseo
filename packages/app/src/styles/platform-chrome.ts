@@ -1,4 +1,5 @@
 import { StyleSheet } from "react-native-unistyles";
+import type { ViewStyle } from "react-native";
 
 /**
  * Platform chrome overrides. Metro resolves `platform-chrome.harmony.ts` on HarmonyOS and this
@@ -8,4 +9,9 @@ import { StyleSheet } from "react-native-unistyles";
 export const platformChromeStyles = StyleSheet.create({
   headerButton: {},
   composerCard: {},
+  menuPanel: {},
+  modalCard: {},
 });
+
+/** Plain-style companion for surfaces that must not carry a Unistyles style. */
+export const platformChromeGlassFill: ViewStyle = {};

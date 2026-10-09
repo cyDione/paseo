@@ -23,6 +23,7 @@ import { SPACING, type Theme } from "@/styles/theme";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useMenuContext, MenuContextProvider } from "./menu-context";
 import { MenuPage } from "./menu-item";
+import { GLASS_SHEET_BACKGROUND_COMPONENT } from "@/components/ui/glass-sheet-background";
 import { currentPageId, isSubPageOpen } from "./menu-navigation";
 import { AnchoredSurface, MenuOverlay } from "./menu-overlay";
 import { getMenuSheetBottomPadding } from "./menu-sheet-layout";
@@ -405,6 +406,7 @@ function MenuSheetSurface({
       // sheet up instead, which is the only thing a content-sized sheet can usefully do.
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
+      backgroundComponent={GLASS_SHEET_BACKGROUND_COMPONENT}
     >
       <BottomSheetScrollView
         dataSet={sheetDataSet}

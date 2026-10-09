@@ -51,6 +51,8 @@ import { usePanelStore } from "@/stores/panel-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
+import { GlassLayer } from "@/components/ui/glass-layer";
+import { platformChromeGlassFill } from "@/styles/platform-chrome";
 import { buildSettingsAddHostRoute, buildSettingsRoute } from "@/utils/host-routes";
 import { openHostOverview } from "@/navigation/settings-navigation";
 import {
@@ -548,6 +550,8 @@ function MobileSidebar({
       paddingTop: insetsTop,
       paddingBottom: insetsBottom,
       backgroundColor: theme.colors.surfaceSidebar,
+      // Harmony hands the fill to the GlassLayer below; empty elsewhere.
+      ...platformChromeGlassFill,
     }),
     [insetsTop, insetsBottom, theme.colors.surfaceSidebar],
   );
@@ -558,6 +562,7 @@ function MobileSidebar({
       closeGesture={closeGesture}
       panelStyle={mobileSidebarInsetStyle}
     >
+      <GlassLayer thickness="thick" />
       <View style={styles.sidebarContent} pointerEvents="auto">
         <WindowChromeSafeArea placement="below" />
         <SidebarNavRows style={styles.sidebarHeaderGroup} onBeforeNavigate={closeSidebar} />
