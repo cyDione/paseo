@@ -4,6 +4,7 @@ const pkg = require("./package.json");
 const withAndroidAsyncStorageSize = require("./plugins/with-android-async-storage-size");
 const withAndroidProfileable = require("./plugins/with-android-profileable");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
+const withHarmonySystemMaterial = require("./plugins/with-harmony-system-material");
 const withPasteInput = require("./plugins/with-paste-input");
 const withAndroidScroll = require("./modules/paseo-scroll/app.plugin");
 const { getNativeReleaseVersion } = require("./native-release-version");
@@ -221,6 +222,7 @@ export default {
           },
         },
       ],
+      withHarmonySystemMaterial,
       "@expo-harmony/prebuild-config",
     ],
     experiments: {

@@ -3,7 +3,8 @@ project(PaseoUnistyles)
 
 file(GLOB_RECURSE UNISTYLES_CORE CONFIGURE_DEPENDS "generated/unistyles/cxx/*.cpp")
 file(GLOB UNISTYLES_SPECS CONFIGURE_DEPENDS "generated/unistyles/specs/*.cpp")
-add_library(paseo_unistyles SHARED PaseoUnistyles.cpp ${UNISTYLES_CORE} ${UNISTYLES_SPECS})
+file(GLOB PASEO_MATERIAL CONFIGURE_DEPENDS "material/*.cpp")
+add_library(paseo_unistyles SHARED PaseoUnistyles.cpp ${PASEO_MATERIAL} ${UNISTYLES_CORE} ${UNISTYLES_SPECS})
 target_compile_features(paseo_unistyles PUBLIC cxx_std_20)
 target_include_directories(paseo_unistyles PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}

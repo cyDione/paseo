@@ -1,5 +1,6 @@
-import { RNOHPackage, TurboModulesFactory, TurboModule, TurboModuleContext }
+import { ComponentBuilderContext, RNOHPackage, TurboModulesFactory, TurboModule, TurboModuleContext }
   from '@rnoh/react-native-openharmony';
+import { buildPaseoMaterialView, PaseoMaterialView } from './MaterialView';
 
 interface WindowInsets {
   top: number;
@@ -64,5 +65,13 @@ class UnistylesFactory extends TurboModulesFactory {
 export class PaseoUnistylesPackage extends RNOHPackage {
   override createTurboModulesFactory(ctx: TurboModuleContext): TurboModulesFactory {
     return new UnistylesFactory(ctx);
+  }
+
+  // The ArkTS side of the material view. C++ registers only its descriptor and view config
+  // (cpp/material/MaterialRegistration.cpp), so the mounting manager builds this component.
+  override createWrappedCustomRNComponentBuilderByComponentNameMap():
+    Map<string, WrappedBuilder<[ComponentBuilderContext]>> {
+    return new Map<string, WrappedBuilder<[ComponentBuilderContext]>>()
+      .set(PaseoMaterialView.NAME, wrapBuilder(buildPaseoMaterialView));
   }
 }

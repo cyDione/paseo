@@ -1,6 +1,7 @@
 #pragma once
 #include "RNOH/Package.h"
 #include "RNOH/ArkTSTurboModule.h"
+#include "material/MaterialRegistration.h"
 
 namespace rnoh {
 class HarmonyPlatform;
@@ -25,6 +26,17 @@ public:
   explicit PaseoUnistylesPackage(Package::Context ctx) : Package(ctx) {}
   std::unique_ptr<TurboModuleFactoryDelegate> createTurboModuleFactoryDelegate() override {
     return std::make_unique<PaseoUnistylesFactory>();
+  }
+
+  // The ArkTS material view rides along in this module (material/MaterialRegistration.cpp). It
+  // registers no component instance: ArkTS owns the node, so the mounting manager must keep it
+  // on the ArkTS path.
+  std::vector<facebook::react::ComponentDescriptorProvider> createComponentDescriptorProviders() override {
+    return paseo_material::createComponentDescriptorProviders();
+  }
+
+  ComponentJSIBinderByString createComponentJSIBinderByName() override {
+    return paseo_material::createComponentJSIBinderByName();
   }
 };
 }
