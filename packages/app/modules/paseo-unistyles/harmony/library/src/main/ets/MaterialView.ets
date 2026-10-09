@@ -1,32 +1,64 @@
 /**
- * `PaseoMaterialLight` / `PaseoMaterialDark`: an RN view whose background is an ArkUI system
- * material, with a visible frosted-glass fallback that does not depend on the material or on the
- * props arriving.
+ * `PaseoMaterialLight` / `PaseoMaterialDark`: an RN view whose background is frosted glass on
+ * HarmonyOS, with an optional HDS flowing-light overlay.
  *
- * The material is a node attribute, so it can only paint a node that *contains* what should show
- * through it — that is also what `colorInvert` needs, since it adapts the colors of the node's
- * subtree. The RN children therefore live inside this component (`ContentSlot`), and the C++ layout
- * rect pinned on this component's frame node is the box the material fills.
+ * The immersive system material (`.systemMaterial()`) is **not** the effect here. It is created but
+ * never activated on an arbitrary container: the engine answers every one of ours with
+ * `Material inactive: out of scope. Use component in navigation title bar or Tabbar.` The material
+ * only lights up inside the components it belongs to (Navigation title bar, Tabs tab bar, Dialog,
+ * Toast, bindSheet, Menu, Select, Toggle, Slider, Chip, SegmentButton, SelectionMenu, …). What
+ * paints this container instead is the always-available `.backgroundEffect()` — a backdrop blur
+ * with an explicit radius, saturation, brightness and translucent fill — so the surface reads as
+ * frosted glass on every device, and the light effect comes from an `HdsVisualComponent` overlay.
+ *
+ * The material is still created behind `SYSTEM_MATERIAL_ENABLED` (off): the code path and its logs
+ * are kept so a future container that *is* in scope can switch it on.
+ *
+ * The material path also constrains the shape of this component: a material can only paint a node
+ * that *contains* what should show through it, so the RN children live inside this component
+ * (`ContentSlot`), and the C++ layout rect pinned on this component's frame node is the box the
+ * background fills.
  *
  * This component deliberately does not use `RNViewBase`: the ArkUI node for an ArkTS component is
  * already positioned by the layout rect the C++ side sets on its wrapper, and `RNViewBase`
  * re-applies the same origin from `layoutMetrics`, which would offset anything that does not start
- * at (0, 0). It applies the view properties the material surfaces need (corner radius, border,
- * opacity) from the descriptor instead.
+ * at (0, 0). It applies the corner radius (which clips the background), the border, the border
+ * style and the opacity from the descriptor instead.
  */
 import deviceInfo from '@ohos.deviceInfo';
 import hilog from '@ohos.hilog';
 import uiMaterial from '@ohos.arkui.uiMaterial';
+import {
+  DualEdgeFlowLightWithMaskParam,
+  HdsSceneController,
+  HdsSceneType,
+  HdsVisualComponent,
+} from '@kit.UIDesignKit';
 import { ComponentBuilderContext, RNComponentContext } from '@rnoh/react-native-openharmony';
 import {
   Descriptor,
   ViewDescriptorWrapperBase,
-  ViewBaseProps,
   ViewRawProps,
 } from '@rnoh/react-native-openharmony/ts';
 
 const HILOG_DOMAIN: number = 0xA100;
 const HILOG_TAG: string = 'PaseoMaterial';
+
+/**
+ * The HDS visual-effect syscap. `canIUse` is the official probe: without it the overlay is skipped
+ * and only the blur paints.
+ */
+const FLOW_LIGHT_SYSCAP: string = 'SystemCapability.UIDesign.HDSComponent.Core';
+
+/**
+ * `.systemMaterial()` is created but inactive on this container (see the file header). Off by
+ * default so the engine stops logging "Material inactive: out of scope" for every surface; flip it
+ * when this component moves somewhere the material is in scope.
+ */
+const SYSTEM_MATERIAL_ENABLED: boolean = false;
+
+/** HDS overlay switch; the effect is only added when the device has the syscap as well. */
+const FLOW_LIGHT_ENABLED: boolean = true;
 
 /**
  * Every `uiMaterial` API is `@since 26.0.0` while the app's compatible SDK version is 23, so the
@@ -40,11 +72,9 @@ const UNAVAILABLE_METRIC: number = -1;
 export type PaseoMaterialScheme = 'light' | 'dark';
 
 /**
- * Built-in tints, used whenever the JS color does not arrive. They are the difference between
- * "invisible" and "frosted glass": an unset material color is transparent, so a surface that relies
- * on the props alone disappears completely when the props do. Both are translucent by construction
- * — an opaque fill would also block the material's own filter. Feel values, not derived from a
- * token; `material-color.ts` sends the same order of magnitude for the themes.
+ * Built-in tints, used whenever the JS color does not arrive, so the surface is never transparent
+ * by accident. Translucent by construction: an opaque fill would also hide the blur behind it.
+ * Feel values, not derived from a token.
  */
 const DEFAULT_TINT_LIGHT: string = '#B3FFFFFF';
 const DEFAULT_TINT_DARK: string = '#66000000';
@@ -55,6 +85,31 @@ const DEFAULT_DEGRADED_TINT_DARK: string = '#66331B00';
 const DEFAULT_LIGHT_EFFECT_LIGHT: string = '#80FFFFFF';
 const DEFAULT_LIGHT_EFFECT_DARK: string = '#40FFFFFF';
 const DEFAULT_THICKNESS: string = 'regular';
+
+/**
+ * Backdrop blur per material thickness, in vp. The radii are deliberately large — at 8vp a blur is
+ * a smudge you have to look for, and the point of this surface is that the transcript behind it is
+ * visibly out of focus. Saturation and brightness lift what is behind the glass on light themes and
+ * calm it down on dark ones. Feel values, tuned by eye, not derived from a token.
+ */
+const BLUR_RADIUS_THIN: number = 16;
+const BLUR_RADIUS_REGULAR: number = 28;
+const BLUR_RADIUS_THICK: number = 44;
+const BLUR_SATURATION_LIGHT: number = 1.6;
+const BLUR_SATURATION_DARK: number = 1.4;
+const BLUR_BRIGHTNESS_LIGHT: number = 1.08;
+const BLUR_BRIGHTNESS_DARK: number = 0.92;
+
+/**
+ * The flowing light runs along the perimeter, one edge per half. `startPos`/`endPos` are documented
+ * as "the portion of the component perimeter", so these are fractions of one lap; splitting the
+ * perimeter in two keeps the lights apart, and a value that does not fit the engine's expectations
+ * would simply draw the wrong arc.
+ */
+const FLOW_LIGHT_FIRST_START: number = 0;
+const FLOW_LIGHT_FIRST_END: number = 0.5;
+const FLOW_LIGHT_SECOND_START: number = 0.5;
+const FLOW_LIGHT_SECOND_END: number = 1;
 
 /**
  * Diagnostics are WARN, not INFO: a device's default global log level is `W`
@@ -107,6 +162,13 @@ interface MaterialPropValue {
   source: string;
 }
 
+/** Backdrop blur settings for one surface. */
+interface BackdropBlurParams {
+  radius: number;
+  saturation: number;
+  brightness: number;
+}
+
 function resolveStringProp(typed: string | undefined, raw: string | undefined): MaterialPropValue {
   if (typed !== undefined && typed.length > 0) {
     return { value: typed, source: 'props' };
@@ -117,11 +179,6 @@ function resolveStringProp(typed: string | undefined, raw: string | undefined): 
   return { value: undefined, source: 'default' };
 }
 
-/**
- * Which channels carried anything at all: `props` is the typed `descriptor.props` copy from the
- * ComponentNapiBinder, `rawProps` the generic one. `none` means nothing arrived and every value
- * below came from the built-in defaults.
- */
 /** Which channel carried a boolean prop, or `default` when neither did. */
 function resolveBooleanPropSource(typed: boolean | undefined, raw: boolean | undefined): string {
   if (typed !== undefined) {
@@ -133,6 +190,11 @@ function resolveBooleanPropSource(typed: boolean | undefined, raw: boolean | und
   return 'default';
 }
 
+/**
+ * Which channels carried anything at all: `props` is the typed `descriptor.props` copy from the
+ * ComponentNapiBinder, `rawProps` the generic one. `none` means nothing arrived and every value came
+ * from the built-in defaults.
+ */
 function summarizePropChannels(sources: string[]): string {
   let fromTyped = false;
   let fromRaw = false;
@@ -167,6 +229,23 @@ function defaultLightEffect(scheme: PaseoMaterialScheme): string {
   return scheme === 'dark' ? DEFAULT_LIGHT_EFFECT_DARK : DEFAULT_LIGHT_EFFECT_LIGHT;
 }
 
+function resolveBackdropBlur(
+  thickness: string | undefined,
+  scheme: PaseoMaterialScheme,
+): BackdropBlurParams {
+  let radius = BLUR_RADIUS_REGULAR;
+  if (thickness === 'thin') {
+    radius = BLUR_RADIUS_THIN;
+  } else if (thickness === 'thick') {
+    radius = BLUR_RADIUS_THICK;
+  }
+  return {
+    radius: radius,
+    saturation: scheme === 'dark' ? BLUR_SATURATION_DARK : BLUR_SATURATION_LIGHT,
+    brightness: scheme === 'dark' ? BLUR_BRIGHTNESS_DARK : BLUR_BRIGHTNESS_LIGHT,
+  };
+}
+
 function toImmersiveStyle(thickness: string | undefined): uiMaterial.ImmersiveStyle {
   if (thickness === 'thin') {
     return uiMaterial.ImmersiveStyle.THIN;
@@ -175,25 +254,6 @@ function toImmersiveStyle(thickness: string | undefined): uiMaterial.ImmersiveSt
     return uiMaterial.ImmersiveStyle.THICK;
   }
   return uiMaterial.ImmersiveStyle.REGULAR;
-}
-
-/**
- * The backdrop blur is not the material and does not depend on it: it is applied on every path, so
- * the surface is frosted even where the material only recolors the node (the low-computing-power
- * level) or does not exist at all.
- */
-function toBlurStyle(thickness: string | undefined): BlurStyle {
-  if (thickness === 'thin') {
-    return BlurStyle.Thin;
-  }
-  if (thickness === 'thick') {
-    return BlurStyle.Thick;
-  }
-  return BlurStyle.Regular;
-}
-
-function isMaterialApiAvailable(): boolean {
-  return deviceInfo.sdkApiVersion >= MATERIAL_API_VERSION;
 }
 
 function toBorderStyle(style: string | undefined): BorderStyle {
@@ -206,9 +266,18 @@ function toBorderStyle(style: string | undefined): BorderStyle {
   return BorderStyle.Solid;
 }
 
+function isMaterialApiAvailable(): boolean {
+  return deviceInfo.sdkApiVersion >= MATERIAL_API_VERSION;
+}
+
+function isFlowLightAvailable(): boolean {
+  return FLOW_LIGHT_ENABLED && canIUse(FLOW_LIGHT_SYSCAP);
+}
+
 /**
- * Builds the material for one configuration, or `undefined` when this device cannot render it. The
- * color always has a value: the JS one when it arrived, the built-in tint otherwise.
+ * The material for one configuration, or `undefined` when it is disabled or unsupported. Only used
+ * while `SYSTEM_MATERIAL_ENABLED` is on; the color always has a value, the JS one or the built-in
+ * tint.
  */
 function createMaterial(
   thickness: string,
@@ -217,7 +286,11 @@ function createMaterial(
   interactive: boolean,
   applyShadow: boolean,
 ): uiMaterial.Material | undefined {
-  if (!isMaterialApiAvailable() || !uiMaterial.isImmersiveMaterialSupported()) {
+  if (
+    !SYSTEM_MATERIAL_ENABLED ||
+    !isMaterialApiAvailable() ||
+    !uiMaterial.isImmersiveMaterialSupported()
+  ) {
     return undefined;
   }
   const lightEffect: uiMaterial.LightEffectOptions = { color: lightColor };
@@ -233,26 +306,49 @@ function createMaterial(
 }
 
 /**
- * The material, the corner radius that clips it, the border the RN style asked for and the backdrop
- * blur all belong to the same node, so they are applied by one modifier. A new instance is set on
- * every descriptor change, which is what makes ArkUI apply it again.
+ * The flowing-light overlay stops before it runs: the caller starts it once the component is
+ * attached, and a fresh controller carries fresh colors.
+ */
+function createFlowLightController(maskColor: string, flowColor: string): HdsSceneController {
+  const params: DualEdgeFlowLightWithMaskParam = {
+    backgroundMaskColors: [maskColor],
+    firstEdgeFlowLight: {
+      startPos: FLOW_LIGHT_FIRST_START,
+      endPos: FLOW_LIGHT_FIRST_END,
+      color: flowColor,
+    },
+    secondEdgeFlowLight: {
+      startPos: FLOW_LIGHT_SECOND_START,
+      endPos: FLOW_LIGHT_SECOND_END,
+      color: flowColor,
+    },
+  };
+  const controller = new HdsSceneController();
+  controller.setSceneParams(params);
+  return controller;
+}
+
+/**
+ * The backdrop blur, the fill, the corner radius that clips them, the border the RN style asked for
+ * and the material (when enabled) all belong to the same node, so they are applied by one modifier.
+ * A new instance is set on every descriptor change, which is what makes ArkUI apply it again.
  */
 class PaseoMaterialAttributeModifier implements AttributeModifier<StackAttribute> {
   private readonly descriptor: PaseoMaterialDescriptor;
   private readonly material: uiMaterial.Material | undefined;
   private readonly fillColor: string;
-  private readonly blurStyle: BlurStyle;
+  private readonly blur: BackdropBlurParams;
 
   constructor(
     descriptor: PaseoMaterialDescriptor,
     material: uiMaterial.Material | undefined,
     fillColor: string,
-    blurStyle: BlurStyle,
+    blur: BackdropBlurParams,
   ) {
     this.descriptor = descriptor;
     this.material = material;
     this.fillColor = fillColor;
-    this.blurStyle = blurStyle;
+    this.blur = blur;
   }
 
   applyNormalAttribute(instance: StackAttribute): void {
@@ -286,24 +382,23 @@ class PaseoMaterialAttributeModifier implements AttributeModifier<StackAttribute
     if (opacity !== 1) {
       instance.opacity(opacity);
     }
-    // The blur and the translucent fill are unconditional: they are what makes the surface visible
-    // as frosted glass. The material is an enhancement on top of them, never the only thing that
-    // paints — an unsupported material or a color that never arrived would leave the surface
-    // completely transparent.
-    instance.backgroundBlurStyle(this.blurStyle);
-    instance.backgroundColor(this.fillColor);
+    // The blur and the translucent fill are unconditional: they are what makes the surface frosted
+    // glass, and unlike the system material they work on any container. The fill must stay
+    // translucent — an opaque color would hide the blur behind it.
+    const effect: BackgroundEffectOptions = {
+      radius: this.blur.radius,
+      saturation: this.blur.saturation,
+      brightness: this.blur.brightness,
+      color: this.fillColor,
+      adaptiveColor: AdaptiveColor.DEFAULT,
+    };
+    instance.backgroundEffect(effect);
     if (this.material !== undefined) {
       instance.systemMaterial(this.material);
     }
   }
 }
 
-/**
- * One summary line per view instance, plus the material's own verdict. Both are printed while the
- * component appears (the first descriptor read happens in `aboutToAppear`) and never per descriptor
- * update: two WARN lines per surface are enough to answer "did the component exist, did the props
- * arrive, was the material applied" on a device whose log level filters everything below W.
- */
 /** What the summary line reports; see docs/harmony.md for how to read it. */
 interface MaterialAppearSummary {
   viewName: string;
@@ -312,22 +407,30 @@ interface MaterialAppearSummary {
   tintColor: string;
   tintSource: string;
   channels: string;
-  blurStyle: BlurStyle;
+  blur: BackdropBlurParams;
+  flowLight: boolean;
 }
 
+/**
+ * One summary line per view instance, plus one effect line. Both are printed while the component
+ * appears (the first descriptor read happens in `aboutToAppear`) and never per descriptor update:
+ * two WARN lines per surface are enough to answer "did the component exist, did the props arrive,
+ * what exactly is painting it".
+ */
 function logAppearSummary(input: MaterialAppearSummary): void {
-  const supported: boolean = isMaterialApiAvailable() && uiMaterial.isImmersiveMaterialSupported();
+  const supported: boolean =
+    isMaterialApiAvailable() && uiMaterial.isImmersiveMaterialSupported();
   const level: number = isMaterialApiAvailable() ? uiMaterial.getGlobalMaterialLevel() : UNAVAILABLE_METRIC;
   const state: number = isMaterialApiAvailable() ? uiMaterial.getMaterialInfo().state : UNAVAILABLE_METRIC;
   logWarning(
     `PaseoMaterial: appear name=${input.viewName} supported=${supported} level=${level} state=${state}` +
       ` propsReceived=${input.channels} materialColor=${input.tintColor}(from=${input.tintSource})` +
-      ` style=${input.thickness} blurStyle=${input.blurStyle}`,
+      ` style=${input.thickness}`,
   );
-}
-
-function logMaterialApplied(applied: boolean): void {
-  logWarning(`PaseoMaterial: systemMaterial applied=${applied}`);
+  logWarning(
+    `PaseoMaterial: effect blur=radius:${input.blur.radius},saturation:${input.blur.saturation},brightness:${input.blur.brightness}` +
+      ` flowLight=${input.flowLight} systemMaterial=${SYSTEM_MATERIAL_ENABLED ? 'called' : 'skipped(flag)'}`,
+  );
 }
 
 @Builder
@@ -360,11 +463,15 @@ export struct PaseoMaterialView {
    */
   public defaultScheme: PaseoMaterialScheme = 'light';
   @State private modifier: PaseoMaterialAttributeModifier | undefined = undefined;
+  @State private flowLightController: HdsSceneController | undefined = undefined;
+  @State private flowLightEnabled: boolean = false;
   private cleanUpCallbacks: (() => void)[] = [];
   private summaryLogged: boolean = false;
-  private loggedMaterialApplied: boolean | undefined = undefined;
+  private flowLightKey: string = '';
+  private flowLightFinishLogged: boolean = false;
 
   aboutToAppear(): void {
+    this.flowLightEnabled = isFlowLightAvailable();
     this.onDescriptorChange(this.ctx.descriptorRegistry.getDescriptor<PaseoMaterialDescriptor>(this.tag));
     this.cleanUpCallbacks.push(
       this.ctx.descriptorRegistry.subscribeToDescriptorChanges(this.tag, (descriptor: Descriptor) => {
@@ -374,7 +481,32 @@ export struct PaseoMaterialView {
   }
 
   aboutToDisappear(): void {
+    this.stopFlowLight();
     this.cleanUpCallbacks.forEach((callback: () => void) => callback());
+  }
+
+  private viewName(): string {
+    return this.defaultScheme === 'dark' ? PaseoMaterialView.DARK_NAME : PaseoMaterialView.LIGHT_NAME;
+  }
+
+  /**
+   * The scene callback is the only runtime signal the HDS component offers. It is logged once: if
+   * the engine refuses the scene the way it refuses `.systemMaterial()` out of scope, this line
+   * either never comes or comes immediately, and the difference is the evidence.
+   */
+  private onFlowLightFinished(): void {
+    if (this.flowLightFinishLogged) {
+      return;
+    }
+    this.flowLightFinishLogged = true;
+    logWarning(`PaseoMaterial: flowLight finished name=${this.viewName()}`);
+  }
+
+  private stopFlowLight(): void {
+    if (this.flowLightController !== undefined) {
+      this.flowLightController.stop();
+      this.flowLightController = undefined;
+    }
   }
 
   private onDescriptorChange(descriptor: PaseoMaterialDescriptor): void {
@@ -392,19 +524,20 @@ export struct PaseoMaterialView {
     const applyShadow: boolean = typedProps.applyShadow ?? rawProps.applyShadow ?? true;
     const tintColor: string = tint.value ?? defaultTint(this.defaultScheme);
     const lightColor: string = light.value ?? defaultLightEffect(this.defaultScheme);
-    const blurStyle: BlurStyle = toBlurStyle(thicknessProp.value);
+    const blur: BackdropBlurParams = resolveBackdropBlur(thicknessProp.value, this.defaultScheme);
     const material = createMaterial(thickness, tintColor, lightColor, interactive, applyShadow);
-    const fillColor: string = material !== undefined
-      ? tintColor
-      : (degraded.value ?? defaultDegradedTint(this.defaultScheme));
-    this.modifier = new PaseoMaterialAttributeModifier(descriptor, material, fillColor, blurStyle);
-    const materialApplied: boolean = material !== undefined;
+    // The degraded fill is the same tint with the diagnostic orange mixed in, and it only means
+    // something on the material path: it marks a device that could not render a material we asked
+    // for. With the material switched off there is nothing to diagnose, so the tint is the fill.
+    const fillColor: string = SYSTEM_MATERIAL_ENABLED && material === undefined
+      ? (degraded.value ?? defaultDegradedTint(this.defaultScheme))
+      : tintColor;
+    this.modifier = new PaseoMaterialAttributeModifier(descriptor, material, fillColor, blur);
+    this.updateFlowLight(tintColor, lightColor);
     if (!this.summaryLogged) {
       this.summaryLogged = true;
       logAppearSummary({
-        viewName: this.defaultScheme === 'dark'
-          ? PaseoMaterialView.DARK_NAME
-          : PaseoMaterialView.LIGHT_NAME,
+        viewName: this.viewName(),
         scheme: this.defaultScheme,
         thickness: thickness,
         tintColor: tintColor,
@@ -417,21 +550,48 @@ export struct PaseoMaterialView {
           resolveBooleanPropSource(typedProps.interactive, rawProps.interactive),
           resolveBooleanPropSource(typedProps.applyShadow, rawProps.applyShadow),
         ]),
-        blurStyle: blurStyle,
+        blur: blur,
+        flowLight: this.flowLightEnabled,
       });
     }
-    if (materialApplied !== this.loggedMaterialApplied) {
-      this.loggedMaterialApplied = materialApplied;
-      logMaterialApplied(materialApplied);
+  }
+
+  /** Rebuild the scene only when its colors change; a running controller is stopped first. */
+  private updateFlowLight(maskColor: string, flowColor: string): void {
+    const key = `${this.flowLightEnabled}|${maskColor}|${flowColor}`;
+    if (key === this.flowLightKey) {
+      return;
     }
+    this.flowLightKey = key;
+    this.stopFlowLight();
+    if (!this.flowLightEnabled) {
+      return;
+    }
+    const controller = createFlowLightController(maskColor, flowColor);
+    this.flowLightController = controller;
+    controller.start();
   }
 
   build() {
     Stack() {
       ContentSlot(this.ctx.getContentForTag(this.tag));
+      if (this.flowLightController !== undefined) {
+        // Decoration on top of the RN content: it must not take a single touch away from it. The
+        // controller's existence is the condition — it is only created when the syscap is there.
+        HdsVisualComponent()
+          .scene(
+            HdsSceneType.DUAL_EDGE_FLOW_LIGHT_WITH_BACKGROUND_MASK,
+            this.flowLightController,
+            () => this.onFlowLightFinished(),
+          )
+          .width('100%')
+          .height('100%')
+          .hitTestBehavior(HitTestMode.None)
+      }
     }
     .width('100%')
     .height('100%')
+    .clip(true)
     .attributeModifier(this.modifier);
   }
 }

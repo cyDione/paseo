@@ -174,53 +174,81 @@ effective color scheme from the contributed theme or the theme preference, with
 `auto` following the system scheme, and calls `StatusBar.setBarStyle`. It re-runs
 when the system scheme changes.
 
-## System material (ArkUI)
+## Frosted chrome (ArkUI)
 
-The composer card and the pills above it are immersive system materials on HarmonyOS. The material
-is a component attribute (`.systemMaterial()`), so this is ArkTS: `PaseoMaterialLight` /
-`PaseoMaterialDark` in the `paseo-unistyles` HAR wrap the RN children of a surface in a `Stack` that
-carries the material. JS reaches them through `MaterialView`
-(`packages/app/src/components/ui/material-view.harmony.tsx`), a plain `View` on every other
-platform, so call sites stay unconditional. Decorative use only: the components, the transcript and
-the material rules below are the whole contract.
+The composer card and the pills above it are frosted translucent surfaces on HarmonyOS. The effect
+is ArkUI's own backdrop blur plus a translucent fill, with an HDS flowing-light overlay on top. JS
+reaches it through `MaterialView` (`packages/app/src/components/ui/material-view.harmony.tsx`), a
+plain `View` on every other platform, so call sites stay unconditional. Decorative use only: the
+component, the values below and the transcript layout around it are the whole contract.
 
-### The material contains its content
+The RN children live inside the component (`ContentSlot`): the ArkTS node is the surface's own box,
+and the RN children are laid out inside it by the C++ layout rects.
 
-`ImmersiveOptions.colorInvert` adapts text and icon colors across the material node's _subtree_,
-so the RN children sit inside that node — that is what the `ContentSlot` in the middle of the
-Stack is for. A material painted on a sibling behind the content can never do that.
+This component deliberately does not use `RNViewBase`: the ArkUI node for an ArkTS component is
+already positioned by the layout rect the C++ side sets on its wrapper, and `RNViewBase` re-applies
+the same origin from `layoutMetrics`, which would offset anything that does not start at (0, 0). It
+applies the corner radius (which clips the background), the border, the border style and the opacity
+from the descriptor instead.
 
-The container is the RN node's own box: the C++ mounting manager positions the ArkTS component
-through the layout rect it sets on the component's frame node. This component therefore does not
-use `RNViewBase` — that struct re-applies `layoutMetrics.frame.origin` as a `position()`, which
-would offset any node whose origin is not (0, 0). It applies the corner radius (which is what clips
-the material), the border, the border style and the opacity from the descriptor instead.
+### The immersive system material is out of scope here
 
-### The surface is visible without the material and without the props
+`.systemMaterial()` creates a material object on any component, but the engine only _activates_ it
+inside the components the material belongs to. On device, every surface of ours answers with:
 
-The material is an enhancement, never the only paint. Two things are applied on every path, before
-it:
+```
+W C03900/sh.paseo.harmony/Ace: Material inactive: out of scope. Use component in navigation title bar or Tabbar.
+```
 
-- A backdrop blur through `.backgroundBlurStyle()` — the device's own, independent of the material.
-  The material does not blur at every material level (at low computing power it only affects the
-  node's background, border and shadow), so a surface that relied on it alone would show color
-  without blur.
-- A translucent fill through `.backgroundColor()` — the JS tint when it arrived, the component's
-  built-in tint otherwise.
+The material object exists, `uiMaterial.getMaterialInfo()` reports `state=1` (the application-level
+metadata switch below was read), `isImmersiveMaterialSupported()` is true and the computing level is
+`EXQUISITE` — and nothing is drawn, because a composer card is not a Navigation title bar. That is
+what "transparent, no blur, no tint" was in the earlier attempts; the props and the registration
+were never the problem.
 
-`materialColor` defaults to `Color.Transparent`, and a prop that never arrives leaves the surface
-exactly that: transparent, with nothing behind it. The built-in tints exist for that failure.
-`material-color.ts` sends `surface0` at 55% on light themes and `surface1` at 55% on dark ones; the
-ArkTS side falls back to `#B3FFFFFF` / `#66000000` when it hears nothing at all, and the component
-_name_ carries the scheme, so the fallback is right in both themes even if no prop ever reaches the
-device. Every fill is translucent by construction — a fully opaque color blocks the material filter,
-and the same rule applies to any background set on the container.
+`SYSTEM_MATERIAL_ENABLED` in `MaterialView.ets` is therefore `false` and the call is skipped, which
+also silences the engine warning. The code path and the logs stay so that a container that _is_ in
+scope can switch it on. Which entries do get a real system material (evaluation only, not used
+here):
+
+| Entry                | Where the material is honoured                                                                                          | What it would take                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Navigation title bar | `navigation.d.ts`, the title bar's `systemMaterial` option                                                              | Move the header into an ArkUI `Navigation`/`HdsNavigation` title bar; the RN header is its own view tree  |
+| Tabs tab bar         | `tabs.d.ts`, tab bar options with `systemMaterial`, `maskColor`, `maskHeight`, `adaptToHandedness`                      | Render the compact bottom/segment bar as an ArkUI `Tabs` bar instead of RN                                |
+| Built-in components  | Dialog, Toast, `bindSheet`, Menu, Select, Toggle, Slider, Chip/ChipGroup, SegmentButton, SelectionMenu, AlphabetIndexer | Replace the RN equivalent — a chip's material comes with the chip's own component, not with our container |
+
+### What paints instead
+
+- **Backdrop blur and fill.** `.backgroundEffect()` with an explicit radius, saturation, brightness
+  and a translucent `color`, plus the corner radius that clips it. Unlike the material this works on
+  any container and on every supported system version (the API is much older than 26), so the
+  surface is frosted wherever the app runs. `.clip(true)` closes the corners for the RN children
+  too. The radii are deliberately large — 16 vp thin, 28 vp regular, 44 vp thick — because a blur
+  you have to look for is not the point; saturation and brightness lift the transcript behind the
+  glass on light themes (1.6 / 1.08) and calm it on dark ones (1.4 / 0.92). All of them are feel
+  values in `MaterialView.ets`, tuned by eye.
+- **Flowing light.** An `HdsVisualComponent` overlay inside the same component,
+  `HdsSceneType.DUAL_EDGE_FLOW_LIGHT_WITH_BACKGROUND_MASK`, driven by an `HdsSceneController` that
+  is started in `aboutToAppear` and stopped in `aboutToDisappear`. It sits above the RN content and
+  is `HitTestMode.None`, so it takes no touches. Its colors are the adopted tint (mask) and the
+  light color (both translucent, from JS or the built-in defaults), and it is skipped entirely when
+  `canIUse('SystemCapability.UIDesign.HDSComponent.Core')` is false. `FLOW_LIGHT_ENABLED` is the
+  switch. Whether the engine treats _this_ scene as out of scope as well is not documented; the
+  scene's finish callback logs once (`PaseoMaterial: flowLight finished`) so the device answers it.
+
+### The surface is visible without props
+
+`materialColor` defaults to `Color.Transparent`, and a prop that never arrives would leave the
+surface exactly that. The built-in tints exist for that failure: `material-color.ts` sends `surface0`
+at 55% on light themes and `surface1` at 55% on dark ones, and the ArkTS side falls back to
+`#B3FFFFFF` / `#66000000` when it hears nothing at all. The component _name_
+(`PaseoMaterialLight` / `PaseoMaterialDark`) carries the scheme, so the fallback is right in both
+themes even if no prop ever reaches the device.
 
 The RN side stays transparent for the same reason. `platformChromeMaterialFill`
 (`styles/platform-chrome.harmony.ts`) is `transparent` on HarmonyOS and `null` elsewhere, which
-`composer/pill-styles.ts` and any other material surface reads inside its `StyleSheet.create`; the
-composer card's own entry (`platformChromeStyles.composerCard`) does the same. The card's shadow
-comes from the material (`applyShadow`), not from the theme's `shadow.md`.
+`composer/pill-styles.ts` and any other surface reads inside its `StyleSheet.create`; the composer
+card's own entry (`platformChromeStyles.composerCard`) does the same.
 
 ### Registration and prop delivery
 
@@ -243,89 +271,43 @@ There are two prop channels, and the ArkTS side logs which one carried each valu
    (`MutationsToNapiConverter.cpp`), which needs no binder.
 
 Neither is trusted alone: `MaterialView.ets` prefers the typed copy, falls back to `rawProps`, then
-to its built-in default, and prints the raw values, the typed values and the adopted value with its
-source. A prop that only ever travels on one channel, or on neither, is visible in the log instead
-of turning into a silent default.
+to its built-in default, and the appearance summary names the channel each value came from.
 
 ### Application-level switch
 
 The entry module's `module.json5` metadata carries
 `{ "name": "ohos.arkui.UIMaterial.state", "value": "enable" }`. `packages/app/harmony` is generated
 by prebuild, so the key comes from the local config plugin
-`packages/app/plugins/with-harmony-system-material.js` (through `withModuleJson`), not from a file
-in the checkout. The key name comes from Huawei's "开启沉浸光感" documentation and is not present in
-the SDK declarations; `uiMaterial.getMaterialInfo().state` — the `state=` field of the log line
-below — is how you confirm the system read it.
-
-### Degradation and diagnostics
-
-Every `uiMaterial` API is `@since 26.0.0` while the app's compatible SDK version is 23, so ArkTS
-warns on each use and the component gates on `deviceInfo.sdkApiVersion >= 26` — the probe the
-compiler's own suggestion (`deviceInfo.apiAvailable`) is too new to be. Older devices take the
-degraded path instead of touching the module.
-
-`uiMaterial.isImmersiveMaterialSupported()` gates the material per component on top of that. When
-it is false the material is simply not created (`path=degraded` in the log) and the blur plus fill
-described above are all the surface gets. `getGlobalMaterialLevel()` reports how much the device can
-do at all, and the material has different effects per level: at `SMOOTH` it drives the node's
-background, border and shadow — but does not blur, which is why the backdrop blur is applied
-unconditionally; at `EXQUISITE` and `GENTLE` it adds the filter, light and shadow over the fill.
-
-Two tints are on by default and are meant to be turned off (or deleted with their constants) once
-the material is verified on a device:
-
-| Signal                                        | Meaning                                                                                     | Where                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Red translucent fill, `rgba(255, 0, 0, 0.25)` | The native view never registered or threw while rendering, so the surface is a plain `View` | `MATERIAL_DIAGNOSTIC_TINTS` in `material-view.harmony.tsx` |
-| Orange cast mixed into the fill               | The material degraded to the backdrop-blur path                                             | `materialDegradedFillColor` in `material-color.ts`         |
-| No tint                                       | The system material applied                                                                 | —                                                          |
+`packages/app/plugins/with-harmony-system-material.js` (through `withModuleJson`). The device
+confirms the system read it: `state=1` in the appearance line. The key name comes from Huawei's
+"开启沉浸光感" documentation and is not present in the SDK declarations. It is kept because a
+container that is in scope would need it; it has no effect on the current surfaces either way.
 
 ### Diagnosing it on a device
 
 Every `PaseoMaterial:` line is **WARN**, never INFO. A device's default global log level is `W`
-(`param get hilog.loggable.global`), which filters `hilog.info` and `LOG(INFO)` completely: the
-first device run captured 12.7k lines with not one `PaseoMaterial` line in them. ArkTS logs go
-through `hilog.warn(domain, tag, '%{public}s', message)` — the format string is what keeps the
-arguments out of the `<private>` mask — and the C++ line goes through `LOG(WARNING)`, which RNOH's
-`LogSink` (`LogSink.cpp`) turns into `OH_LOG_WARN`.
+(`param get hilog.loggable.global`), which filters `hilog.info` and `LOG(INFO)` completely: one
+device run captured 12.7k lines with not one `PaseoMaterial` line in them. ArkTS logs go through
+`hilog.warn(domain, tag, '%{public}s', message)` — the format string is what keeps the arguments out
+of the `<private>` mask — and the C++ line goes through `LOG(WARNING)`, which RNOH's `LogSink`
+(`LogSink.cpp`) turns into `OH_LOG_WARN`.
 
-`hdc hilog | grep PaseoMaterial` then shows:
+`hdc hilog | grep PaseoMaterial` then shows, per process and per surface:
 
 ```
 PaseoMaterial: module loaded
 PaseoMaterial: registered PaseoMaterialLight / PaseoMaterialDark descriptors, view configs and prop binders
-PaseoMaterial: appear name=PaseoMaterialLight supported=true level=0 state=1 propsReceived=props+rawProps materialColor=#8CFFFFFF(from=props) style=regular blurStyle=Regular
-PaseoMaterial: systemMaterial applied=true
+PaseoMaterial: appear name=PaseoMaterialLight supported=true level=0 state=1 propsReceived=props+rawProps materialColor=#8CFFFFFF(from=props) style=regular
+PaseoMaterial: effect blur=radius:28,saturation:1.6,brightness:1.08 flowLight=true systemMaterial=skipped(flag)
 ```
 
-They answer the questions in the order they can fail:
-
-| Line                      | Says                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `module loaded`           | The ArkTS module was evaluated at all — printed once per process, before anything is built.                                                                                                                                                                                                                                                                                                                                                                                                |
-| `registered …`            | The shared library registered the two component names, their view configs and the prop binder.                                                                                                                                                                                                                                                                                                                                                                                             |
-| `appear …`                | One per view instance, at `aboutToAppear`: `name` is the variant that was built, `supported`/`level`/`state` are material support, computing level and the resolved metadata `state` (`level`/`state` are `-1` when the material APIs do not exist on the system), `propsReceived` names the channels that carried anything (`props`, `rawProps`, `props+rawProps`, or `none`), and `materialColor` is the adopted tint with the channel it came from (`default` means the built-in tint). |
-| `systemMaterial applied=` | Whether an `ImmersiveMaterial` was created and set on the node. `false` means the material is absent or the device does not support it: only the blur and the fill paint.                                                                                                                                                                                                                                                                                                                  |
-
-A surface with no `appear` line at all was never built; one with `appear` and no following `applied`
-line has not finished its first descriptor read.
-
-### The floating composer
-
-The composer floats over the transcript on HarmonyOS so the material has content to blur: the
-transcript runs to the bottom of the pane and passes under the card, and the card's own box is the
-only thing above it. `packages/app/src/composer/dock/overlay-layout.ts` /
-`overlay-layout.harmony.ts` decide whether the platform can do this, and `ComposerDock`'s
-`overlayContent` prop decides which panes ask for it. Only the agent chat pane does: the draft and
-new-workspace docks put a setup form under the composer, and a floating composer would leave that
-form's bottom under a card.
-
-The dock measures the floating composer and publishes the height through
-`ComposerOverlayHeightContext`; `agent-panel.tsx` adds it to the transcript's tail and
-scroll-control clearance (`resolveComposerOverlayInset`, `composer/dock/internal/overlay-clearance.ts`)
-and the pill strip takes it as its own `bottom`, so the pills stay directly on the card. The
-composer keeps its place inside `KeyboardTranslateView`: the whole surface moves with the keyboard,
-and `ComposerViewportContent`'s capacity bound still limits how tall the card may grow.
+| Line                 | Says                                                                                                                                                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `module loaded`      | The ArkTS module was evaluated at all — once per process, before anything is built.                                                                                                                                                                                       |
+| `registered …`       | The shared library registered the two names, their view configs and the prop binder.                                                                                                                                                                                      |
+| `appear …`           | One per view instance, at `aboutToAppear`: the variant that was built, material support/computing level/metadata `state`, the channels the props arrived on (`props`, `rawProps`, `props+rawProps`, `none`), and the adopted tint with its source (`default` = built-in). |
+| `effect …`           | The values actually painting: the blur parameters, whether the flowing light was added, and whether `.systemMaterial()` was called (`called`, or `skipped(flag)` while the switch is off).                                                                                |
+| `flowLight finished` | The HDS scene reported completion — a scene the engine refused would not. Logged once per instance.                                                                                                                                                                       |
 
 ## HarmonyOS 7 (API 26) UI capability cheat sheet
 
