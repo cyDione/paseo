@@ -21,6 +21,28 @@ constexpr const char *kThinComponentName = "PaseoGlassThin";
 constexpr const char *kRegularComponentName = "PaseoGlassRegular";
 constexpr const char *kThickComponentName = "PaseoGlassThick";
 
+/**
+ * The JS view config is built from `createNativeProps`, and the Fabric renderer drops every prop
+ * that is not listed there (`ReactNativeAttributePayload.create`/`diff` filter by
+ * `validAttributes`). Without these four, the material props never reach the native props
+ * parser and the layer silently keeps its defaults — the invisible v1 again.
+ *
+ * The colors declare as "number" so the value crosses the bridge untouched: they are already
+ * processed 0xAARRGGBB ints, and "Color" would run `processColor` a second time and rotate the
+ * channels.
+ */
+class GlassComponentJSIBinder : public BaseComponentJSIBinder {
+protected:
+  facebook::jsi::Object createNativeProps(facebook::jsi::Runtime &rt) override {
+    auto nativeProps = BaseComponentJSIBinder::createNativeProps(rt);
+    nativeProps.setProperty(rt, "materialColor", "number");
+    nativeProps.setProperty(rt, "lightColor", "number");
+    nativeProps.setProperty(rt, "interactive", "boolean");
+    nativeProps.setProperty(rt, "applyShadow", "boolean");
+    return nativeProps;
+  }
+};
+
 class GlassComponentInstanceFactoryDelegate : public ComponentInstanceFactoryDelegate {
 public:
   ComponentInstance::Shared create(ComponentInstance::Context ctx) override {
@@ -57,9 +79,9 @@ std::vector<facebook::react::ComponentDescriptorProvider> createComponentDescrip
 
 ComponentJSIBinderByString createComponentJSIBinderByName() {
   return {
-      {kThinComponentName, std::make_shared<BaseComponentJSIBinder>()},
-      {kRegularComponentName, std::make_shared<BaseComponentJSIBinder>()},
-      {kThickComponentName, std::make_shared<BaseComponentJSIBinder>()},
+      {kThinComponentName, std::make_shared<GlassComponentJSIBinder>()},
+      {kRegularComponentName, std::make_shared<GlassComponentJSIBinder>()},
+      {kThickComponentName, std::make_shared<GlassComponentJSIBinder>()},
   };
 }
 
