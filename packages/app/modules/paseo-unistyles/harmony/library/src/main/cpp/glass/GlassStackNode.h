@@ -28,8 +28,9 @@ struct GlassConfig {
 };
 
 /**
- * Stack node that carries the system material, or the tinted backdrop-blur fallback. It has no
- * children of its own; the layer is a plain absolutely positioned view.
+ * Stack node that carries the system material and the tinted backdrop blur every glass view also
+ * needs: the material can paint nothing (see the header), so the node's own fill is what keeps a
+ * surface visible. It has no children of its own; the layer is a plain absolutely positioned view.
  */
 class GlassStackNode : public ArkUINode {
 public:
@@ -48,6 +49,19 @@ public:
   void applyMaterial(const GlassConfig &config);
 
 private:
+  /** Status codes of the two fill attributes; -1 means the attribute was not set at all. */
+  struct FillStatus {
+    int32_t blur = -1;
+    int32_t backgroundColor = -1;
+    uint32_t color = 0;
+  };
+
+  /**
+   * Sets the node's own fill — backdrop blur plus the material color — whatever the material
+   * does. `degraded` mixes the diagnostic tint into the color.
+   */
+  FillStatus applyTintedFill(bool degraded);
+  void logSummary(const char *path, const FillStatus &fill, const char *materialStatus);
   void teardownMaterial();
   void degradeToBackdropBlur(const char *reason);
 

@@ -15,9 +15,29 @@ namespace paseo_glass {
 
 namespace {
 
-// Backdrop blur radius for the degraded path. NODE_BACKDROP_BLUR takes px, not vp; 24px is a
-// starting point to tune on a real device.
+// Backdrop blur radius for the fill every glass view carries. NODE_BACKDROP_BLUR takes px, not
+// vp; 24px is a starting point to tune on a real device.
 constexpr float kBackdropBlurRadiusPx = 24.0f;
+
+// Diagnostic-only (its JS counterpart is GLASS_DIAGNOSTIC_TINTS in glass-layer.harmony.tsx, and
+// docs/harmony.md explains both): with this on, a degraded layer mixes an orange cast into its
+// fill so a device test can tell "system material applied" from "fell back to the tinted blur" on
+// sight. Set both to false once the material is verified on a device.
+constexpr bool kDiagnosticTintOnDegrade = true;
+// 0xAARRGGBB like every color here: orange at 0x33 alpha, composited over the material color.
+constexpr uint32_t kDiagnosticTint = 0x33FF8800;
+
+/// Alpha-composites a 0xAARRGGBB overlay over a 0xAARRGGBB base. Diagnostic colors only.
+uint32_t mixOver(uint32_t base, uint32_t overlay) {
+  const uint32_t alpha = (overlay >> 24) & 0xFFu;
+  const uint32_t inverse = 255u - alpha;
+  const auto channel = [&](unsigned shift) {
+    return (((overlay >> shift) & 0xFFu) * alpha + ((base >> shift) & 0xFFu) * inverse) / 255u;
+  };
+  const uint32_t baseAlpha = (base >> 24) & 0xFFu;
+  const uint32_t resultAlpha = baseAlpha > alpha ? baseAlpha : alpha;
+  return (resultAlpha << 24) | (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
 
 // Live glass views, so `hdc hilog | grep PaseoGlass` answers "how many layers did the app
 // actually mount". Everything runs on the UI thread; the counter is atomic to stay safe if a
@@ -267,6 +287,51 @@ void GlassStackNode::applyMaterial(const GlassConfig &config) {
 
   m_material = material;
   m_lightEffectOptions = lightEffectOptions;
+
+  // The material sits on top of the node's own fill. Setting both means every outcome is at
+  // least tinted frosted glass: on EXQUISITE/GENTLE the material adds its filter and shadow over
+  // the fill, and on SMOOTH, where the material drives the background color itself, our explicit
+  // fill is the same tint the material was given.
+  const FillStatus fill = applyTintedFill(false);
+  const std::string materialStatus = std::to_string(status);
+  logSummary("material", fill, materialStatus.c_str());
+}
+
+GlassStackNode::FillStatus GlassStackNode::applyTintedFill(bool degraded) {
+  FillStatus status;
+  if (m_config.materialColor == 0) {
+    // Nothing tinted the material in the first place; there is no color to fall back on.
+    return status;
+  }
+
+  uint32_t color = static_cast<uint32_t>(m_config.materialColor);
+  if (degraded && kDiagnosticTintOnDegrade) {
+    color = mixOver(color, kDiagnosticTint);
+  }
+
+  ArkUI_NumberValue radius[] = {{.f32 = kBackdropBlurRadiusPx}};
+  ArkUI_AttributeItem blurItem = {.value = radius, .size = 1};
+  status.blur = NativeNodeApi::getInstance()->setAttribute(m_nodeHandle, NODE_BACKDROP_BLUR, &blurItem);
+
+  ArkUI_NumberValue tint[] = {{.u32 = color}};
+  ArkUI_AttributeItem tintItem = {.value = tint, .size = 1};
+  status.backgroundColor =
+      NativeNodeApi::getInstance()->setAttribute(m_nodeHandle, NODE_BACKGROUND_COLOR, &tintItem);
+  status.color = color;
+  return status;
+}
+
+void GlassStackNode::logSummary(
+    const char *path,
+    const FillStatus &fill,
+    const char *materialStatus) {
+  // One line per view, after every attribute is set, so
+  // `hdc hilog | grep "PaseoGlass: summary"` answers where each layer ended up.
+  const std::string blur = fill.blur < 0 ? "none" : std::to_string(fill.blur);
+  const std::string backgroundColor =
+      fill.backgroundColor < 0 ? "none" : std::to_string(fill.backgroundColor);
+  LOG(INFO) << "PaseoGlass: summary style=" << materialStyleName(m_style) << " path=" << path
+            << " blur=" << blur << " bg=" << backgroundColor << " material=" << materialStatus;
 }
 
 void GlassStackNode::teardownMaterial() {
@@ -284,29 +349,21 @@ void GlassStackNode::teardownMaterial() {
     api.destroyImmersiveMaterial(m_material);
     m_material = nullptr;
   }
-  // The fallback owns these two; leaving them behind would double up with the next material.
+  // The fill travels with every path (applyTintedFill); clearing it here keeps the next apply
+  // from stacking a second one, and keeps the teardown symmetric with the setup.
   NativeNodeApi::getInstance()->resetAttribute(m_nodeHandle, NODE_BACKDROP_BLUR);
   NativeNodeApi::getInstance()->resetAttribute(m_nodeHandle, NODE_BACKGROUND_COLOR);
 }
 
 void GlassStackNode::degradeToBackdropBlur(const char *reason) {
-  ArkUI_NumberValue radius[] = {{.f32 = kBackdropBlurRadiusPx}};
-  ArkUI_AttributeItem blurItem = {.value = radius, .size = 1};
-  int32_t blurStatus = NativeNodeApi::getInstance()->setAttribute(m_nodeHandle, NODE_BACKDROP_BLUR, &blurItem);
-
-  // A blur alone over a light surface is invisible; the material color doubles as the fallback
-  // tint so the layer still reads as frosted glass.
-  std::string tintStatus = "none";
-  if (m_config.materialColor != 0) {
-    ArkUI_NumberValue color[] = {{.u32 = static_cast<uint32_t>(m_config.materialColor)}};
-    ArkUI_AttributeItem colorItem = {.value = color, .size = 1};
-    int32_t status = NativeNodeApi::getInstance()->setAttribute(m_nodeHandle, NODE_BACKGROUND_COLOR, &colorItem);
-    tintStatus = std::to_string(status);
-  }
-
+  // The material is off the table, so the fill is the whole effect — with the diagnostic tint, so
+  // the degraded path is visible on the device and not just in the log.
+  const FillStatus fill = applyTintedFill(true);
   LOG(INFO) << "PaseoGlass: degraded to backdrop blur (" << reason
-            << ") radiusPx=" << kBackdropBlurRadiusPx << " status=" << blurStatus
-            << " backgroundColor=" << colorName(m_config.materialColor) << " status=" << tintStatus;
+            << ") radiusPx=" << kBackdropBlurRadiusPx << " status=" << fill.blur
+            << " backgroundColor=" << colorName(static_cast<int32_t>(fill.color))
+            << " status=" << fill.backgroundColor;
+  logSummary("degraded", fill, "none");
 }
 
 } // namespace paseo_glass
